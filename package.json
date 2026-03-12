@@ -1,0 +1,45 @@
+{
+  "name": "socio-fullstack",
+  "version": "1.0.0",
+  "description": "Full-stack web application with React, Node.js, Express, PostgreSQL, and TypeScript",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:backend": "npm run dev --workspace=backend",
+    "build": "npm run build --workspaces",
+    "install:all": "npm install && npm install --workspace=frontend && npm install --workspace=backend",
+    "start": "npm run start --workspace=backend",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "npm test --workspace=backend",
+    "test:frontend": "npm test --workspace=frontend",
+    "test:watch": "concurrently \"npm run test:backend:watch\" \"npm run test:frontend:watch\"",
+    "test:backend:watch": "npm run test:watch --workspace=backend",
+    "test:frontend:watch": "npm test --watch --workspace=frontend",
+    "test:coverage": "npm run test:backend:coverage && npm run test:frontend:coverage",
+    "test:backend:coverage": "npm run test:coverage --workspace=backend",
+    "test:frontend:coverage": "npm test --coverage --workspace=frontend"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.7.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "concurrently": "^8.2.2",
+    "jest": "^30.0.5",
+    "jest-environment-jsdom": "^30.0.5"
+  },
+  "keywords": [
+    "react",
+    "nodejs",
+    "express",
+    "postgresql",
+    "typescript",
+    "fullstack"
+  ],
+  "author": "",
+  "license": "MIT"
+}

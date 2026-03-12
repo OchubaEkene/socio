@@ -1,0 +1,624 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum Gender {
+  male
+  female
+}
+
+enum StaffType {
+  permanent
+  temporary
+}
+
+enum ShiftType {
+  day
+  night
+}
+
+enum DayOfWeek {
+  monday
+  tuesday
+  wednesday
+  thursday
+  friday
+  saturday
+  sunday
+  everyday
+}
+
+enum GenderPreference {
+  male
+  female
+  any
+}
+
+enum UserRole {
+  admin
+  manager
+  staff
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  username  String   @unique
+  password  String
+  firstName String?
+  lastName  String?
+  role      UserRole @default(staff)
+  bio       String?
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  absenceApprovals Absence[] @relation("AbsenceApprovals")
+  vacationApprovals VacationRequest[] @relation("VacationApprovals")
+  swapApprovals ShiftSwap[] @relation("SwapApprovals")
+  timeTransactions WorkingTimeTransaction[] @relation("TimeTransactions")
+  timeRecordApprovals TimeRecord[] @relation("TimeRecordApprovals")
+  roleAssignments UserRoleAssignment[] @relation("RoleAssignments")
+  userRoleAssignments UserRoleAssignment[]
+  staff     Staff?   @relation(fields: [staffId], references: [id])
+  staffId   String?  @unique
+
+  @@map("users")
+}
+
+// Staff Management Models
+model Staff {
+  id         String    @id @default(cuid())
+  name       String
+  email      String?   // Optional email for notifications
+  gender     Gender
+  staffType  StaffType
+  qualifications String[] @default([])
+  maxHoursPerWeek Int?   // null = no limit
+  isActive   Boolean   @default(true)  // soft delete — never hard-delete staff
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  // Relations
+  user       User?
+  availabilities Availability[]
+  shifts         Shift[]
+  absences       Absence[]
+  vacationRequests VacationRequest[]
+  requesterSwaps ShiftSwap[] @relation("SwapRequests")
+  responderSwaps ShiftSwap[] @relation("SwapResponses")
+  workingTimeAccounts WorkingTimeAccount[]
+  timeRecords    TimeRecord[]
+  contracts      EmployeeContract[]
+  managedEmployees EmployeeContract[] @relation("EmployeeManagers")
+
+  @@map("staff")
+}
+
+model Availability {
+  id        String   @id @default(cuid())
+  staffId   String
+  startTime DateTime
+  endTime   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@map("availabilities")
+}
+
+model Shift {
+  id        String    @id @default(cuid())
+  staffId   String
+  ruleId    String?   // nullable: manually-created shifts have no rule
+  shiftType ShiftType
+  shiftName String?   // custom label copied from the rule e.g. "Morning", "Afternoon"
+  date      DateTime  @db.Date
+  startTime DateTime
+  endTime   DateTime
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Relations
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  rule  Rule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  schedulingExceptions SchedulingException[]
+  requesterShifts ShiftSwap[] @relation("RequesterShifts")
+  responderShifts ShiftSwap[] @relation("ResponderShifts")
+  timeRecords TimeRecord[]
+
+  @@map("shifts")
+}
+
+// Staffing Rules Model
+model Rule {
+  id                     String           @id @default(cuid())
+  name                   String
+  shiftType              ShiftType
+  shiftName              String?          // custom label e.g. "Morning", "Afternoon"
+  startHour              Int              @default(8)   // 0-23
+  endHour                Int              @default(20)  // 0-23 (next day if < startHour)
+  dayOfWeek              DayOfWeek
+  requiredStaff          Int
+  genderPreference       GenderPreference
+  requiredQualifications String[]         @default([])
+  priority               Int              @default(1)
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  // Relations
+  shifts               Shift[]
+  schedulingExceptions SchedulingException[]
+
+  @@map("rules")
+}
+
+// Scheduling Exception Model
+model SchedulingException {
+  id         String   @id @default(cuid())
+  shiftId    String?  // Nullable foreign key to Shift
+  ruleId     String
+  message    String
+  isResolved Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  shift Shift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  rule  Rule   @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@map("scheduling_exceptions")
+}
+
+// Absence Management Models
+enum AbsenceType {
+  SICK_LEAVE
+  PERSONAL_LEAVE
+  EMERGENCY
+  OTHER
+}
+
+enum AbsenceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model Absence {
+  id          String        @id @default(cuid())
+  staffId     String
+  absenceType AbsenceType
+  status      AbsenceStatus @default(PENDING)
+  startDate   DateTime      @db.Date
+  endDate     DateTime      @db.Date
+  reason      String
+  notes       String?
+  approvedBy  String?       // User ID who approved/rejected
+  approvedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  approver User? @relation("AbsenceApprovals", fields: [approvedBy], references: [id], onDelete: SetNull)
+
+  @@map("absences")
+}
+
+// Vacation Planning Models
+enum VacationType {
+  ANNUAL
+  SICK
+  PERSONAL
+  MATERNITY
+  PATERNITY
+  BEREAVEMENT
+  OTHER
+}
+
+model VacationRequest {
+  id            String        @id @default(cuid())
+  staffId       String
+  vacationType  VacationType
+  status        AbsenceStatus @default(PENDING)
+  startDate     DateTime      @db.Date
+  endDate       DateTime      @db.Date
+  totalDays     Int
+  reason        String
+  notes         String?
+  approvedBy    String?       // User ID who approved/rejected
+  approvedAt    DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  approver User? @relation("VacationApprovals", fields: [approvedBy], references: [id], onDelete: SetNull)
+
+  @@map("vacation_requests")
+}
+
+model VacationPolicy {
+  id                String        @id @default(cuid())
+  staffType         StaffType
+  vacationType      VacationType
+  annualAllowance   Int           // Days per year
+  carryOverLimit    Int           @default(0) // Days that can be carried over
+  minNoticeDays     Int           @default(14) // Minimum notice required
+  maxConsecutiveDays Int          @default(30) // Maximum consecutive days
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@map("vacation_policies")
+}
+
+// Shift Swap Models
+enum SwapStatus {
+  PENDING
+  STAFF_APPROVED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model ShiftSwap {
+  id              String     @id @default(cuid())
+  requesterId     String     // Staff requesting the swap
+  responderId     String     // Staff responding to the swap
+  requesterShiftId String
+  responderShiftId String
+  status          SwapStatus @default(PENDING)
+  requesterReason String?
+  responderReason String?
+  approvedBy      String?    // Manager who approved
+  approvedAt      DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  // Relations
+  requester Staff @relation("SwapRequests", fields: [requesterId], references: [id], onDelete: Cascade)
+  responder Staff @relation("SwapResponses", fields: [responderId], references: [id], onDelete: Cascade)
+  requesterShift Shift @relation("RequesterShifts", fields: [requesterShiftId], references: [id], onDelete: Cascade)
+  responderShift Shift @relation("ResponderShifts", fields: [responderShiftId], references: [id], onDelete: Cascade)
+  approver User? @relation("SwapApprovals", fields: [approvedBy], references: [id], onDelete: SetNull)
+
+  @@map("shift_swaps")
+}
+
+// Working Time Account Models
+enum TimeAccountType {
+  OVERTIME
+  FLEX_TIME
+  COMP_TIME
+  VACATION_ACCOUNT
+  SICK_LEAVE_ACCOUNT
+}
+
+enum TimeRecordingMethod {
+  MANUAL
+  AUTOMATIC
+  SHYFTPLAN
+  SAP_INTEGRATION
+  API_INTEGRATION
+}
+
+model WorkingTimeAccount {
+  id              String           @id @default(cuid())
+  staffId         String
+  accountType     TimeAccountType
+  balance         Float            @default(0) // Hours in decimal format
+  maxBalance      Float?           // Maximum allowed balance
+  minBalance      Float?           // Minimum required balance
+  year            Int
+  month           Int?
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  // Relations
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  transactions WorkingTimeTransaction[]
+
+  @@unique([staffId, accountType, year, month])
+  @@map("working_time_accounts")
+}
+
+enum TransactionType {
+  CREDIT
+  DEBIT
+}
+
+model WorkingTimeTransaction {
+  id              String           @id @default(cuid())
+  accountId       String
+  transactionType TransactionType
+  amount          Float            // Hours in decimal format
+  description     String
+  referenceType   String?          // 'SHIFT', 'OVERTIME', 'VACATION', etc.
+  referenceId     String?          // ID of the related record
+  recordedAt      DateTime         @default(now())
+  recordedBy      String?          // User who recorded the transaction
+  method          TimeRecordingMethod @default(MANUAL)
+  notes           String?
+
+  // Relations
+  account WorkingTimeAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  recorder User? @relation("TimeTransactions", fields: [recordedBy], references: [id], onDelete: SetNull)
+
+  @@map("working_time_transactions")
+}
+
+// Time Recording Models
+model TimeRecord {
+  id              String           @id @default(cuid())
+  staffId         String
+  shiftId         String?
+  clockIn         DateTime
+  clockOut        DateTime?
+  totalHours      Float?           // Calculated hours
+  breakMinutes    Int              @default(0)
+  method          TimeRecordingMethod @default(MANUAL)
+  location        String?          // GPS coordinates or location name
+  deviceId        String?          // Device used for recording
+  isApproved      Boolean          @default(false)
+  approvedBy      String?
+  approvedAt      DateTime?
+  notes           String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  // Relations
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  shift Shift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  approver User? @relation("TimeRecordApprovals", fields: [approvedBy], references: [id], onDelete: SetNull)
+
+  @@map("time_records")
+}
+
+// Employee Contract Models
+enum ContractType {
+  FULL_TIME
+  PART_TIME
+  TEMPORARY
+  CONTRACTOR
+  INTERN
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  INACTIVE
+  TERMINATED
+  SUSPENDED
+  ON_LEAVE
+}
+
+model EmployeeContract {
+  id                  String            @id @default(cuid())
+  staffId             String
+  contractType        ContractType
+  employmentStatus    EmploymentStatus  @default(ACTIVE)
+  startDate           DateTime
+  endDate             DateTime?
+  probationEndDate    DateTime?
+  noticePeriod        Int               // Days
+  workingHoursPerWeek Float             // Hours per week
+  hourlyRate          Float?
+  salary              Float?
+  currency            String            @default("USD")
+  benefits            String[]          @default([])
+  qualifications      String[]          @default([])
+  restrictions        String[]          @default([])
+  managerId           String?           // Reporting manager
+  department          String?
+  position            String?
+  costCenter          String?
+  isActive            Boolean           @default(true)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  // Relations
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  manager Staff? @relation("EmployeeManagers", fields: [managerId], references: [id], onDelete: SetNull)
+  shiftPreferences ShiftPreference[]
+
+  @@map("employee_contracts")
+}
+
+// Shift Preference Models
+enum PreferenceType {
+  PREFERRED
+  AVAILABLE
+  UNAVAILABLE
+  RESTRICTED
+}
+
+enum PreferenceReason {
+  PERSONAL
+  MEDICAL
+  LEGAL
+  TRAINING
+  OTHER
+}
+
+model ShiftPreference {
+  id              String           @id @default(cuid())
+  contractId      String
+  dayOfWeek       DayOfWeek
+  shiftType       ShiftType
+  preferenceType  PreferenceType
+  reason          PreferenceReason?
+  notes           String?
+  startDate       DateTime?
+  endDate         DateTime?
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  // Relations
+  contract EmployeeContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([contractId, dayOfWeek, shiftType])
+  @@map("shift_preferences")
+}
+
+// Authorization Models
+enum Permission {
+  VIEW_SCHEDULE
+  EDIT_SCHEDULE
+  APPROVE_SCHEDULE
+  VIEW_STAFF
+  EDIT_STAFF
+  VIEW_REPORTS
+  EDIT_REPORTS
+  MANAGE_ABSENCES
+  MANAGE_VACATIONS
+  MANAGE_SHIFT_SWAPS
+  MANAGE_TIME_RECORDS
+  MANAGE_CONTRACTS
+  MANAGE_PERMISSIONS
+  SYSTEM_ADMIN
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  permissions Permission[]
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  userRoles UserRoleAssignment[]
+
+  @@map("roles")
+}
+
+model UserRoleAssignment {
+  id     String @id @default(cuid())
+  userId String
+  roleId String
+  assignedBy String?
+  assignedAt DateTime @default(now())
+  expiresAt  DateTime?
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assigner User? @relation("RoleAssignments", fields: [assignedBy], references: [id], onDelete: SetNull)
+
+  @@unique([userId, roleId])
+  @@map("user_role_assignments")
+}
+
+// System Integration Models
+enum IntegrationType {
+  SAP
+  SHYFTPLAN
+  WORKDAY
+  BAMBOO_HR
+  CUSTOM_API
+  WEBHOOK
+}
+
+enum IntegrationStatus {
+  ACTIVE
+  INACTIVE
+  ERROR
+  SYNCING
+}
+
+model SystemIntegration {
+  id              String            @id @default(cuid())
+  name            String
+  type            IntegrationType
+  status          IntegrationStatus @default(INACTIVE)
+  baseUrl         String
+  apiKey          String?
+  apiSecret       String?
+  username        String?
+  password        String?
+  config          Json?             // Additional configuration
+  lastSyncAt      DateTime?
+  syncInterval    Int?              // Minutes
+  errorCount      Int               @default(0)
+  lastError       String?
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  // Relations
+  syncLogs IntegrationSyncLog[]
+
+  @@map("system_integrations")
+}
+
+enum SyncStatus {
+  SUCCESS
+  ERROR
+  PARTIAL
+}
+
+model IntegrationSyncLog {
+  id              String   @id @default(cuid())
+  integrationId   String
+  syncType        String   // 'STAFF', 'SCHEDULE', 'TIME_RECORDS', etc.
+  status          SyncStatus
+  recordsProcessed Int
+  recordsCreated  Int
+  recordsUpdated  Int
+  recordsFailed   Int
+  errorMessage    String?
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+  duration        Int?     // Seconds
+
+  // Relations
+  integration SystemIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@map("integration_sync_logs")
+}
+
+model SchedulePlan {
+  id             String   @id @default(cuid())
+  name           String
+  weekStart      DateTime
+  weekEnd        DateTime
+  status         String   @default("draft") // draft | published
+  totalShifts    Int      @default(0)
+  emailsSent     Boolean  @default(false)
+  exceptionsData Json     @default("[]")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("schedule_plans")
+}
+
+model OrgSettings {
+  id               String   @id @default("singleton")
+  orgName          String   @default("My Organisation")
+  timezone         String   @default("UTC")
+  dayShiftStart    Int      @default(8)
+  dayShiftEnd      Int      @default(20)
+  nightShiftStart  Int      @default(20)
+  nightShiftEnd    Int      @default(8)
+  defaultDayStaff  Int      @default(2)
+  defaultNightStaff Int     @default(2)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("org_settings")
+}
