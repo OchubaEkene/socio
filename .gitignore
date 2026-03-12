@@ -29,3 +29,4 @@ npm-debug.log*
 # IDE
 .vscode/
 .idea/
+frontend/.env.production
