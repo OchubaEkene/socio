@@ -180,7 +180,7 @@ export default function Rules() {
   const createMut = useMutation({
     mutationFn: (f: ReturnType<typeof blankForm>) => rulesAPI.create({
       name: f.name, shiftType: f.shiftType, dayOfWeek: f.dayOfWeek as any,
-      requiredStaff: f.requiredStaff, genderPreference: f.genderPreference,
+      requiredStaff: f.requiredStaff, genderPreference: f.genderPreference as 'male' | 'female' | 'any',
       priority: f.priority, startHour: f.startHour, endHour: f.endHour,
       requiredQualifications: parseQuals(f.requiredQualifications),
     }),
@@ -189,7 +189,7 @@ export default function Rules() {
   })
 
   const updateMut = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Rule> & { requiredQualifications?: string[] } }) =>
+    mutationFn: ({ id, data }: { id: string; data: any }) =>
       rulesAPI.update(id, data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['rules'] }); setEditingRule(null); toast({ title: 'Rule updated' }) },
     onError: () => toast({ title: 'Failed to update rule', variant: 'destructive' }),
