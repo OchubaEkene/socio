@@ -7,7 +7,6 @@ import Login from '@/pages/Login'
 import Register from '@/pages/Register'
 import Staff from '@/pages/Staff'
 import StaffDetail from '@/pages/StaffDetail'
-import StaffAvailability from '@/pages/StaffAvailability'
 import Rules from '@/pages/Rules'
 import Settings from '@/pages/Settings'
 import AdminUsers from '@/pages/AdminUsers'
@@ -34,7 +33,6 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="staff" element={<Staff />} />
           <Route path="staff/:id" element={<StaffDetail />} />
-          <Route path="staff-availability" element={<StaffAvailability />} />
           <Route path="rules" element={<Rules />} />
           <Route path="settings" element={<Settings />} />
           <Route path="admin/users" element={<AdminUsers />} />
