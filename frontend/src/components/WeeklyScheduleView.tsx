@@ -576,7 +576,7 @@ function StaffChip({ shift, shiftType, onDragStart, onDragEnd, onRemove }: Staff
         className="w-3 h-3 rounded-full shrink-0"
         style={{ backgroundColor: color }}
       />
-      <span className="text-sm font-semibold text-gray-800 flex-1 min-w-0 break-words leading-snug">
+      <span className="text-sm font-semibold text-gray-800 flex-1 min-w-0 truncate leading-snug">
         {shift.staffName}
       </span>
       <button
