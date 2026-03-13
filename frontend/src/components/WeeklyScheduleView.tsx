@@ -564,24 +564,18 @@ function StaffChip({ shift, shiftType, onDragStart, onDragEnd, onRemove }: Staff
       onDragEnd={onDragEnd}
       title={shift.staffName}
       className={cn(
-        'group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-grab min-w-0',
-        'active:cursor-grabbing active:opacity-50 select-none transition-all',
-        'hover:shadow-sm border',
-        isDay
-          ? 'bg-white border-amber-100 hover:border-amber-300'
-          : 'bg-white border-indigo-100 hover:border-indigo-300',
+        'group relative rounded-md border bg-white cursor-grab select-none transition-all',
+        'active:cursor-grabbing active:opacity-50 hover:shadow-sm pl-2 pr-5 py-1.5',
+        isDay ? 'border-amber-100 hover:border-amber-300' : 'border-indigo-100 hover:border-indigo-300',
       )}
+      style={{ borderLeftColor: color, borderLeftWidth: 3 }}
     >
-      <div
-        className="w-3 h-3 rounded-full shrink-0"
-        style={{ backgroundColor: color }}
-      />
-      <span className="text-sm font-semibold text-gray-800 flex-1 min-w-0 truncate leading-snug">
+      <p className="text-xs font-medium text-gray-800 leading-tight break-words">
         {shift.staffName}
-      </span>
+      </p>
       <button
         onClick={e => { e.stopPropagation(); onRemove() }}
-        className="opacity-20 group-hover:opacity-100 shrink-0 text-muted-foreground/50 hover:text-destructive transition-all"
+        className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 text-muted-foreground hover:text-destructive transition-all"
         title="Remove"
       >
         <X className="h-3 w-3" />
