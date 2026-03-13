@@ -348,7 +348,7 @@ export default function Rules() {
                     name: editForm.name, shiftType: editForm.shiftType,
                     dayOfWeek: editForm.dayOfWeek as any,
                     requiredStaff: editForm.requiredStaff,
-                    genderPreference: editForm.genderPreference,
+                    genderPreference: editForm.genderPreference as 'male' | 'female' | 'any',
                     priority: editForm.priority,
                     startHour: editForm.startHour, endHour: editForm.endHour,
                     requiredQualifications: parseQuals(editForm.requiredQualifications),
