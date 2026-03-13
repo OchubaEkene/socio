@@ -69,15 +69,10 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       cur = addDays(cur, 7);
     }
 
-    // Generate shifts week by week
-    let totalShifts = 0;
-    const allExceptions: any[] = [];
-
-    for (const weekDate of weeks) {
-      const result = await generateSchedule(weekDate);
-      totalShifts += result.summary.totalShifts;
-      allExceptions.push(...result.exceptions);
-    }
+    // Generate shifts for all weeks in parallel
+    const results = await Promise.all(weeks.map(weekDate => generateSchedule(weekDate)));
+    const totalShifts = results.reduce((sum, r) => sum + r.summary.totalShifts, 0);
+    const allExceptions: any[] = results.flatMap(r => r.exceptions);
 
     // Delete existing plan for the same date range if any
     await prisma.schedulePlan.deleteMany({
