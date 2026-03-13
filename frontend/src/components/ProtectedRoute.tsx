@@ -24,14 +24,14 @@ function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/login" replace />
   }
 
-  // Redirect managers who haven't completed onboarding
+  // Redirect admins/managers who haven't completed onboarding
   // Use localStorage first; fall back to server-side onboardingState
   const localDone = localStorage.getItem('onboarding_complete') === 'true'
   const serverDone = user.onboardingState?.isComplete ?? true
   const onboardingDone = localDone || serverDone
   const isExempt = ONBOARDING_EXEMPT.some(p => location.pathname.startsWith(p))
 
-  if (user.role === 'manager' && !onboardingDone && !isExempt) {
+  if ((user.role === 'admin' || user.role === 'manager') && !onboardingDone && !isExempt) {
     return <Navigate to="/onboarding" replace />
   }
 
