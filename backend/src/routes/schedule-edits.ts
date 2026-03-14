@@ -29,23 +29,23 @@ router.post('/assign', [
       if (!existing) return res.status(404).json({ message: 'Shift not found' });
     }
 
-    const existingAssignment = await prisma.shift.findFirst({ where: { staffId, date: new Date(date), shiftType } });
+    const existingAssignment = await prisma.shift.findFirst({ where: { staffId, date: new Date(date), shiftType, organizationId: orgId } });
     if (existingAssignment) return res.status(400).json({ message: 'Staff member is already assigned to this shift' });
 
     const conflictingShift = await prisma.shift.findFirst({
-      where: { staffId, date: new Date(date), shiftType: shiftType === 'day' ? 'night' : 'day' }
+      where: { staffId, date: new Date(date), shiftType: shiftType === 'day' ? 'night' : 'day', organizationId: orgId }
     });
     if (conflictingShift) return res.status(400).json({ message: 'Staff member is already assigned to a conflicting shift on this day' });
 
     // Check approved absences
     const absence = await prisma.absence.findFirst({
-      where: { staffId, status: 'APPROVED', startDate: { lte: new Date(date) }, endDate: { gte: new Date(date) } }
+      where: { staffId, organizationId: orgId, status: 'APPROVED', startDate: { lte: new Date(date) }, endDate: { gte: new Date(date) } }
     });
     if (absence) return res.status(400).json({ message: `${staff.name} has an approved absence on this date (${absence.absenceType})` });
 
     if (staff.staffType === 'temporary') {
       const availability = await prisma.availability.findFirst({
-        where: { staffId, startTime: { lte: new Date(date) }, endTime: { gte: new Date(date) } }
+        where: { staffId, staff: { organizationId: orgId }, startTime: { lte: new Date(date) }, endTime: { gte: new Date(date) } }
       });
       if (!availability) return res.status(400).json({ message: 'Temporary staff member is not available for this date' });
     }
@@ -107,20 +107,22 @@ router.post('/swap', [
       return res.status(400).json({ message: 'Cannot swap shifts on the same day' });
     }
 
+    const orgId = req.user!.organizationId;
+
     // Availability checks for temporary staff
     if (shift1.staff.staffType === 'temporary') {
-      const avail = await prisma.availability.findFirst({ where: { staffId: shift1.staff.id, startTime: { lte: shift2.date }, endTime: { gte: shift2.date } } });
+      const avail = await prisma.availability.findFirst({ where: { staffId: shift1.staff.id, staff: { organizationId: orgId }, startTime: { lte: shift2.date }, endTime: { gte: shift2.date } } });
       if (!avail) return res.status(400).json({ message: `${shift1.staff.name} is not available for ${shift2.date.toDateString()}` });
     }
     if (shift2.staff.staffType === 'temporary') {
-      const avail = await prisma.availability.findFirst({ where: { staffId: shift2.staff.id, startTime: { lte: shift1.date }, endTime: { gte: shift1.date } } });
+      const avail = await prisma.availability.findFirst({ where: { staffId: shift2.staff.id, staff: { organizationId: orgId }, startTime: { lte: shift1.date }, endTime: { gte: shift1.date } } });
       if (!avail) return res.status(400).json({ message: `${shift2.staff.name} is not available for ${shift1.date.toDateString()}` });
     }
 
     // Conflict checks
     const [conflict1, conflict2] = await Promise.all([
-      prisma.shift.findFirst({ where: { staffId: shift1.staff.id, date: shift2.date, id: { not: shift1Id } } }),
-      prisma.shift.findFirst({ where: { staffId: shift2.staff.id, date: shift1.date, id: { not: shift2Id } } })
+      prisma.shift.findFirst({ where: { staffId: shift1.staff.id, date: shift2.date, id: { not: shift1Id }, organizationId: orgId } }),
+      prisma.shift.findFirst({ where: { staffId: shift2.staff.id, date: shift1.date, id: { not: shift2Id }, organizationId: orgId } })
     ]);
 
     if (conflict1) return res.status(400).json({ message: `${shift1.staff.name} is already assigned on ${shift2.date.toDateString()}` });
@@ -154,7 +156,7 @@ router.get('/available-staff', async (req: AuthRequest, res: Response) => {
     const [allStaff, existingAssignments, availabilities] = await Promise.all([
       prisma.staff.findMany({ where: { isActive: true, organizationId: orgId }, orderBy: { name: 'asc' } }),
       prisma.shift.findMany({ where: { date: targetDate, organizationId: orgId } }),
-      prisma.availability.findMany({ where: { startTime: { lte: targetDate }, endTime: { gte: targetDate } } })
+      prisma.availability.findMany({ where: { startTime: { lte: targetDate }, endTime: { gte: targetDate }, staff: { organizationId: orgId } } })
     ]);
 
     const assignedIds = new Set(existingAssignments.map(a => a.staffId));

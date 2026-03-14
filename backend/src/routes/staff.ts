@@ -166,8 +166,9 @@ router.patch('/:id/restore', requireRole('admin', 'manager'), async (req: AuthRe
 router.get('/:id/availabilities', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const orgId = req.user!.organizationId;
     const availabilities = await prisma.availability.findMany({
-      where: { staffId: id },
+      where: { staffId: id, staff: { organizationId: orgId } },
       orderBy: { startTime: 'asc' }
     });
     res.json({ availabilities });
@@ -207,13 +208,14 @@ router.post('/:id/availabilities', [
 router.get('/:id/shifts', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const orgId = req.user!.organizationId;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const skip = (page - 1) * limit;
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
 
-    const where: any = { staffId: id };
+    const where: any = { staffId: id, organizationId: orgId };
     if (startDate && endDate) {
       where.date = { gte: new Date(startDate), lte: new Date(endDate) };
     }
@@ -242,13 +244,14 @@ router.post('/:id/shifts', requireRole('admin', 'manager'), [
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { id } = req.params;
+    const orgId = req.user!.organizationId;
     const { shiftType, date, startTime, endTime } = req.body;
 
     const staff = await prisma.staff.findUnique({ where: { id } });
     if (!staff) return res.status(404).json({ message: 'Staff member not found' });
 
     const shift = await prisma.shift.create({
-      data: { staffId: id, shiftType, date: new Date(date), startTime: new Date(startTime), endTime: new Date(endTime) }
+      data: { staffId: id, shiftType, date: new Date(date), startTime: new Date(startTime), endTime: new Date(endTime), organizationId: orgId }
     });
 
     res.status(201).json({ message: 'Shift added successfully', shift });

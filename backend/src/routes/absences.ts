@@ -159,6 +159,7 @@ router.post('/', authenticateToken, [
     const overlappingAbsence = await prisma.absence.findFirst({
       where: {
         staffId,
+        organizationId: orgId,
         status: { in: ['PENDING', 'APPROVED'] },
         OR: [
           {
@@ -229,9 +230,10 @@ router.patch('/:id/approve', authenticateToken, [
     const { id } = req.params;
     const { status, notes } = req.body;
     const approverId = (req as any).user.id;
+    const orgId = (req as any).user.organizationId;
 
-    const absence = await prisma.absence.findUnique({
-      where: { id },
+    const absence = await prisma.absence.findFirst({
+      where: { id, organizationId: orgId },
       include: {
         staff: {
           select: {
@@ -312,9 +314,10 @@ router.patch('/:id/approve', authenticateToken, [
 router.get('/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const orgId = (req as any).user?.organizationId;
 
-    const absence = await prisma.absence.findUnique({
-      where: { id },
+    const absence = await prisma.absence.findFirst({
+      where: { id, organizationId: orgId },
       include: {
         staff: {
           select: {
@@ -358,9 +361,10 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
   try {
     const { id } = req.params;
     const userId = (req as any).user.id;
+    const orgId = (req as any).user?.organizationId;
 
-    const absence = await prisma.absence.findUnique({
-      where: { id },
+    const absence = await prisma.absence.findFirst({
+      where: { id, organizationId: orgId },
       include: {
         staff: true
       }

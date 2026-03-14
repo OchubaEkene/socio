@@ -11,7 +11,7 @@ export interface AuthRequest extends Request {
     lastName?: string;
     role: 'admin' | 'manager' | 'staff';
     staffId?: string;
-    organizationId?: string;
+    organizationId: string;
   };
 }
 
@@ -57,10 +57,20 @@ export const authenticateToken = async (
       return;
     }
 
+    // If user has no org (registered before multi-tenancy), auto-create one
+    let organizationId = user.organizationId;
+    if (!organizationId) {
+      const org = await prisma.organization.create({
+        data: { name: `${user.firstName ?? user.username}'s Organisation`, updatedAt: new Date() }
+      });
+      await prisma.user.update({ where: { id: user.id }, data: { organizationId: org.id } });
+      organizationId = org.id;
+    }
+
     req.user = {
       ...user,
       staffId: user.staffId ?? undefined,
-      organizationId: user.organizationId ?? undefined,
+      organizationId,
     };
     next();
   } catch (error) {
@@ -115,11 +125,11 @@ export const optionalAuth = async (
           organizationId: true,
         }
       });
-      if (user) {
+      if (user && user.organizationId) {
         req.user = {
           ...user,
           staffId: user.staffId ?? undefined,
-          organizationId: user.organizationId ?? undefined,
+          organizationId: user.organizationId,
         };
       }
     }

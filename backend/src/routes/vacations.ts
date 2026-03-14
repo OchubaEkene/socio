@@ -222,6 +222,7 @@ router.post('/', authenticateToken, [
     const overlappingVacation = await prisma.vacationRequest.findFirst({
       where: {
         staffId,
+        organizationId: orgId,
         status: { in: ['PENDING', 'APPROVED'] },
         OR: [
           {
@@ -294,9 +295,10 @@ router.patch('/:id/approve', authenticateToken, [
     const { id } = req.params;
     const { status, notes } = req.body;
     const approverId = (req as any).user.id;
+    const orgId = (req as any).user?.organizationId;
 
-    const vacation = await prisma.vacationRequest.findUnique({
-      where: { id },
+    const vacation = await prisma.vacationRequest.findFirst({
+      where: { id, organizationId: orgId },
       include: {
         staff: {
           select: {
@@ -454,6 +456,7 @@ router.get('/balance/:staffId', authenticateToken, async (req: AuthRequest, res:
     const approved = await prisma.vacationRequest.findMany({
       where: {
         staffId,
+        organizationId: orgId,
         status: 'APPROVED',
         startDate: { gte: yearStart, lte: yearEnd },
       },
@@ -498,9 +501,10 @@ router.get('/balance/:staffId', authenticateToken, async (req: AuthRequest, res:
 router.get('/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const orgId = (req as any).user?.organizationId;
 
-    const vacation = await prisma.vacationRequest.findUnique({
-      where: { id },
+    const vacation = await prisma.vacationRequest.findFirst({
+      where: { id, organizationId: orgId },
       include: {
         staff: {
           select: {

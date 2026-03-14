@@ -92,16 +92,17 @@ router.get('/staff/:staffId', async (req: Request, res: Response) => {
   try {
     const { staffId } = req.params;
     const { week } = req.query; // Optional: filter by week
+    const orgId = (req as any).user?.organizationId;
 
     // Check if staff member exists
-    const staff = await prisma.staff.findUnique({
-      where: { id: staffId }
+    const staff = await prisma.staff.findFirst({
+      where: { id: staffId, organizationId: orgId }
     });
 
     if (!staff) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Staff member not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Staff member not found'
       });
     }
 
@@ -157,25 +158,26 @@ router.post('/staff/:staffId', [
     // Validate request body
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: 'Validation failed',
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
     const { staffId } = req.params;
     const { startTime, endTime } = req.body;
+    const orgId = (req as any).user?.organizationId;
 
     // Check if staff member exists
-    const staff = await prisma.staff.findUnique({
-      where: { id: staffId }
+    const staff = await prisma.staff.findFirst({
+      where: { id: staffId, organizationId: orgId }
     });
 
     if (!staff) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Staff member not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Staff member not found'
       });
     }
 
@@ -251,25 +253,26 @@ router.post('/staff/:staffId/bulk', [
     // Validate request body
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: 'Validation failed',
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
     const { staffId } = req.params;
     const { availabilities } = req.body;
+    const orgId = (req as any).user?.organizationId;
 
     // Check if staff member exists
-    const staff = await prisma.staff.findUnique({
-      where: { id: staffId }
+    const staff = await prisma.staff.findFirst({
+      where: { id: staffId, organizationId: orgId }
     });
 
     if (!staff) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Staff member not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Staff member not found'
       });
     }
 
@@ -355,15 +358,16 @@ router.post('/staff/:staffId/bulk', [
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const orgId = (req as any).user?.organizationId;
 
-    const availability = await prisma.availability.findUnique({
-      where: { id }
+    const existing = await prisma.availability.findFirst({
+      where: { id, staff: { organizationId: orgId } }
     });
 
-    if (!availability) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Availability not found' 
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: 'Availability not found'
       });
     }
 
@@ -389,16 +393,17 @@ router.get('/staff/:staffId/stats', async (req: Request, res: Response) => {
   try {
     const { staffId } = req.params;
     const { period } = req.query; // 'week', 'month', 'all'
+    const orgId = (req as any).user?.organizationId;
 
     // Check if staff member exists
-    const staff = await prisma.staff.findUnique({
-      where: { id: staffId }
+    const staff = await prisma.staff.findFirst({
+      where: { id: staffId, organizationId: orgId }
     });
 
     if (!staff) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Staff member not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Staff member not found'
       });
     }
 

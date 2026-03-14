@@ -131,6 +131,10 @@ router.get('/:id/transactions', authenticateToken, async (req: Request, res: Res
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
+    const orgId = (req as any).user?.organizationId;
+
+    const account = await prisma.workingTimeAccount.findFirst({ where: { id, organizationId: orgId } });
+    if (!account) return res.status(404).json({ success: false, message: 'Account not found' });
 
     const transactions = await prisma.workingTimeTransaction.findMany({
       where: { accountId: id },
@@ -196,8 +200,8 @@ router.post('/', authenticateToken, [
     const orgId = req.user!.organizationId;
 
     // Check if staff exists
-    const staff = await prisma.staff.findUnique({
-      where: { id: staffId }
+    const staff = await prisma.staff.findFirst({
+      where: { id: staffId, organizationId: orgId }
     });
 
     if (!staff) {
@@ -213,7 +217,8 @@ router.post('/', authenticateToken, [
         staffId,
         accountType,
         year,
-        month: month || null
+        month: month || null,
+        organizationId: orgId
       }
     });
 
@@ -517,10 +522,12 @@ router.get('/staff/:staffId/summary', authenticateToken, async (req: Request, re
   try {
     const { staffId } = req.params;
     const { year } = req.query;
+    const orgId = (req as any).user?.organizationId;
 
-    const whereClause: any = { 
-      staffId, 
-      isActive: true 
+    const whereClause: any = {
+      staffId,
+      isActive: true,
+      organizationId: orgId
     };
 
     if (year) {

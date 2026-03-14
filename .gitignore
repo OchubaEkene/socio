@@ -30,3 +30,6 @@ npm-debug.log*
 .vscode/
 .idea/
 frontend/.env.production
+
+# Google OAuth secrets
+client_secret_*.json

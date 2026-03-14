@@ -267,8 +267,8 @@ router.post('/', authenticateToken, [
 
     // Check if both staff members exist
     const [requester, responder] = await Promise.all([
-      prisma.staff.findUnique({ where: { id: requesterId } }),
-      prisma.staff.findUnique({ where: { id: responderId } })
+      prisma.staff.findFirst({ where: { id: requesterId, organizationId: orgId } }),
+      prisma.staff.findFirst({ where: { id: responderId, organizationId: orgId } })
     ]);
 
     if (!requester || !responder) {
@@ -280,8 +280,8 @@ router.post('/', authenticateToken, [
 
     // Check if both shifts exist
     const [requesterShift, responderShift] = await Promise.all([
-      prisma.shift.findUnique({ where: { id: requesterShiftId } }),
-      prisma.shift.findUnique({ where: { id: responderShiftId } })
+      prisma.shift.findFirst({ where: { id: requesterShiftId, organizationId: orgId } }),
+      prisma.shift.findFirst({ where: { id: responderShiftId, organizationId: orgId } })
     ]);
 
     if (!requesterShift || !responderShift) {
@@ -309,6 +309,7 @@ router.post('/', authenticateToken, [
     // Check for existing pending swap requests
     const existingSwap = await prisma.shiftSwap.findFirst({
       where: {
+        organizationId: orgId,
         OR: [
           {
             requesterShiftId,
@@ -421,9 +422,10 @@ router.patch('/:id/respond', authenticateToken, [
     }
 
     const staff = { id: currentUser.staffId };
+    const orgId = req.user!.organizationId;
 
-    const swap = await prisma.shiftSwap.findUnique({
-      where: { id },
+    const swap = await prisma.shiftSwap.findFirst({
+      where: { id, organizationId: orgId },
       include: {
         requester: {
           select: {
@@ -554,9 +556,10 @@ router.patch('/:id/approve', authenticateToken, [
     const { id } = req.params;
     const { status } = req.body;
     const approverId = req.user!.id;
+    const orgId = req.user!.organizationId;
 
-    const swap = await prisma.shiftSwap.findUnique({
-      where: { id },
+    const swap = await prisma.shiftSwap.findFirst({
+      where: { id, organizationId: orgId },
       include: {
         requester: {
           select: {
@@ -714,9 +717,10 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
     }
 
     const staff = { id: currentUser.staffId };
+    const orgId = req.user!.organizationId;
 
-    const swap = await prisma.shiftSwap.findUnique({
-      where: { id }
+    const swap = await prisma.shiftSwap.findFirst({
+      where: { id, organizationId: orgId }
     });
 
     if (!swap) {

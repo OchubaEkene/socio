@@ -79,7 +79,7 @@ export async function generateSchedule(weekStart: string | Date, organizationId?
 
     // Fetch active shift preferences (via contracts → staff)
     const shiftPreferences = await prisma.shiftPreference.findMany({
-      where: { isActive: true },
+      where: { isActive: true, ...(organizationId ? { contract: { staff: { organizationId } } } : {}) },
       select: { contractId: true, dayOfWeek: true, shiftType: true, preferenceType: true, contract: { select: { staffId: true } } }
     })
 
@@ -145,7 +145,7 @@ export async function generateSchedule(weekStart: string | Date, organizationId?
 
     const savedShifts = await saveShiftsToDatabase(generatedShifts, organizationId)
     const savedExceptions = await saveExceptionsToDatabase(exceptions, savedShifts, organizationId)
-    await recordWorkingTimeForShifts(savedShifts)
+    await recordWorkingTimeForShifts(savedShifts, organizationId)
 
     return {
       shifts: savedShifts,
@@ -408,7 +408,7 @@ async function saveExceptionsToDatabase(exceptions: SchedulingException[], shift
   return savedExceptions
 }
 
-async function recordWorkingTimeForShifts(shifts: GeneratedShift[]): Promise<void> {
+async function recordWorkingTimeForShifts(shifts: GeneratedShift[], organizationId?: string): Promise<void> {
   if (shifts.length === 0) return
 
   for (const shift of shifts) {
@@ -422,7 +422,7 @@ async function recordWorkingTimeForShifts(shifts: GeneratedShift[]): Promise<voi
     // Upsert FLEX_TIME account for this staff member / year / month
     const account = await prisma.workingTimeAccount.upsert({
       where: { staffId_accountType_year_month: { staffId: shift.staffId, accountType: 'FLEX_TIME', year, month } },
-      create: { staffId: shift.staffId, accountType: 'FLEX_TIME', year, month, balance: 0 },
+      create: { staffId: shift.staffId, accountType: 'FLEX_TIME', year, month, balance: 0, ...(organizationId ? { organizationId } : {}) },
       update: {}
     })
 

@@ -103,8 +103,9 @@ router.post('/', requireRole('admin', 'manager'), async (req: AuthRequest, res: 
 // GET exception by ID
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const exception = await prisma.schedulingException.findUnique({
-      where: { id: req.params.id },
+    const orgId = req.user!.organizationId;
+    const exception = await prisma.schedulingException.findFirst({
+      where: { id: req.params.id, organizationId: orgId },
       include: exceptionInclude
     });
 

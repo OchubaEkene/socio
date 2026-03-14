@@ -36,7 +36,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
     // Unique staff in this plan
     const staffIds = [...new Set(shifts.map(s => s.staffId))];
     const staffList = await prisma.staff.findMany({
-      where: { id: { in: staffIds }, isActive: true },
+      where: { id: { in: staffIds }, isActive: true, organizationId: orgId },
       select: { id: true, name: true, email: true, staffType: true },
       orderBy: { name: 'asc' },
     });
@@ -202,6 +202,9 @@ router.post('/:id/send-emails', async (req: AuthRequest, res: Response) => {
 // DELETE a plan
 router.delete('/:id', async (req: AuthRequest, res: Response) => {
   try {
+    const orgId = req.user!.organizationId;
+    const existingPlan = await prisma.schedulePlan.findFirst({ where: { id: req.params.id, organizationId: orgId } });
+    if (!existingPlan) return res.status(404).json({ success: false, message: 'Plan not found' });
     await prisma.schedulePlan.delete({ where: { id: req.params.id } });
     res.json({ success: true });
   } catch (error) {
