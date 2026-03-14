@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -44,6 +45,7 @@ const AbsenceManagement: React.FC = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isApprovalDialogOpen, setIsApprovalDialogOpen] = useState(false);
   const [selectedAbsence, setSelectedAbsence] = useState<Absence | null>(null);
+  const [pendingDeleteAbsenceId, setPendingDeleteAbsenceId] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     status: '',
     staffId: '',
@@ -173,9 +175,7 @@ const AbsenceManagement: React.FC = () => {
   };
 
   const handleDeleteAbsence = (id: string) => {
-    if (confirm('Are you sure you want to cancel this absence request?')) {
-      deleteAbsenceMutation.mutate(id);
-    }
+    setPendingDeleteAbsenceId(id);
   };
 
   if (isLoading) {
@@ -446,6 +446,26 @@ const AbsenceManagement: React.FC = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!pendingDeleteAbsenceId} onOpenChange={o => !o && setPendingDeleteAbsenceId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel this absence request?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The absence request will be cancelled and the staff member will be notified.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { deleteAbsenceMutation.mutate(pendingDeleteAbsenceId!); setPendingDeleteAbsenceId(null) }}
+            >
+              Cancel request
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -171,6 +172,7 @@ export default function Rules() {
   const [createForm, setCreateForm] = useState(blankForm())
   const [editingRule, setEditingRule] = useState<Rule | null>(null)
   const [editForm, setEditForm] = useState(blankForm())
+  const [confirmDeleteRule, setConfirmDeleteRule] = useState(false)
 
   const { data, isLoading } = useQuery({ queryKey: ['rules'], queryFn: rulesAPI.getAll })
   const rules: Rule[] = data?.data?.data?.rules || []
@@ -336,7 +338,7 @@ export default function Rules() {
           <RuleForm value={editForm} onChange={setEditForm} />
           <div className="flex items-center justify-between pt-2">
             <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10"
-              onClick={() => { if (confirm('Delete this rule?')) { deleteMut.mutate(editingRule!.id); setEditingRule(null) } }}>
+              onClick={() => setConfirmDeleteRule(true)}>
               <Trash2 className="h-4 w-4 mr-1.5" />Delete
             </Button>
             <div className="flex gap-2">
@@ -362,6 +364,26 @@ export default function Rules() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={confirmDeleteRule} onOpenChange={setConfirmDeleteRule}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this rule?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This rule will be permanently removed and will no longer apply to schedule generation.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { deleteMut.mutate(editingRule!.id); setEditingRule(null); setConfirmDeleteRule(false) }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
