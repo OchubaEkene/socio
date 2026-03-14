@@ -10,7 +10,8 @@ router.use(authenticateToken);
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const { staffId, isActive } = req.query;
-    const where: any = {};
+    const orgId = req.user!.organizationId;
+    const where: any = { staff: { organizationId: orgId } };
 
     if (req.user!.role === 'staff') {
       const userWithStaff = await prisma.user.findUnique({
@@ -103,7 +104,8 @@ router.post('/', requireRole('admin', 'manager'), [
       position, department, managerId, costCenter, benefits, qualifications, restrictions
     } = req.body;
 
-    const staff = await prisma.staff.findUnique({ where: { id: staffId } });
+    const orgId = req.user!.organizationId;
+    const staff = await prisma.staff.findFirst({ where: { id: staffId, organizationId: orgId } });
     if (!staff) return res.status(404).json({ success: false, message: 'Staff not found' });
 
     const contract = await prisma.employeeContract.create({

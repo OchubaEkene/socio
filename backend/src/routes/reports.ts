@@ -19,16 +19,17 @@ router.get('/monthly', async (req: AuthRequest, res: Response) => {
     const monthStart = startOfMonth(targetDate);
     const monthEnd = endOfMonth(targetDate);
 
+    const orgId = req.user!.organizationId;
     const [shifts, unresolvedExceptions, pendingAbsences, approvedAbsences, pendingVacations] = await Promise.all([
       prisma.shift.findMany({
-        where: { date: { gte: monthStart, lte: monthEnd } },
+        where: { date: { gte: monthStart, lte: monthEnd }, organizationId: orgId },
         include: { staff: { select: { id: true, name: true, staffType: true } } },
         orderBy: { date: 'asc' }
       }),
-      prisma.schedulingException.count({ where: { isResolved: false } }),
-      prisma.absence.count({ where: { status: 'PENDING' } }),
-      prisma.absence.count({ where: { status: 'APPROVED', startDate: { gte: monthStart }, endDate: { lte: monthEnd } } }),
-      prisma.vacationRequest.count({ where: { status: 'PENDING' } }),
+      prisma.schedulingException.count({ where: { isResolved: false, organizationId: orgId } }),
+      prisma.absence.count({ where: { status: 'PENDING', organizationId: orgId } }),
+      prisma.absence.count({ where: { status: 'APPROVED', startDate: { gte: monthStart }, endDate: { lte: monthEnd }, organizationId: orgId } }),
+      prisma.vacationRequest.count({ where: { status: 'PENDING', organizationId: orgId } }),
     ]);
 
     const staffHours = new Map<string, { name: string; hours: number; dayShifts: number; nightShifts: number; staffType: string }>();
@@ -78,8 +79,9 @@ router.get('/staff-performance/:staffId', async (req: AuthRequest, res: Response
     const monthStart = startOfMonth(targetDate);
     const monthEnd = endOfMonth(targetDate);
 
-    const staff = await prisma.staff.findUnique({
-      where: { id: staffId },
+    const orgId = req.user!.organizationId;
+    const staff = await prisma.staff.findFirst({
+      where: { id: staffId, organizationId: orgId },
       select: { id: true, name: true, staffType: true, qualifications: true }
     });
 
@@ -89,8 +91,8 @@ router.get('/staff-performance/:staffId', async (req: AuthRequest, res: Response
     const previousMonthEnd = endOfMonth(subMonths(targetDate, 1));
 
     const [shifts, previousMonthShifts] = await Promise.all([
-      prisma.shift.findMany({ where: { staffId, date: { gte: monthStart, lte: monthEnd } }, orderBy: { date: 'asc' } }),
-      prisma.shift.findMany({ where: { staffId, date: { gte: previousMonthStart, lte: previousMonthEnd } } })
+      prisma.shift.findMany({ where: { staffId, date: { gte: monthStart, lte: monthEnd }, organizationId: orgId }, orderBy: { date: 'asc' } }),
+      prisma.shift.findMany({ where: { staffId, date: { gte: previousMonthStart, lte: previousMonthEnd }, organizationId: orgId } })
     ]);
 
     const totalHours = shifts.reduce((sum, s) => sum + differenceInHours(s.endTime, s.startTime), 0);
@@ -131,8 +133,9 @@ router.get('/shift-distribution', async (req: AuthRequest, res: Response) => {
     const monthStart = startOfMonth(targetDate);
     const monthEnd = endOfMonth(targetDate);
 
+    const orgId = req.user!.organizationId;
     const shifts = await prisma.shift.findMany({
-      where: { date: { gte: monthStart, lte: monthEnd } },
+      where: { date: { gte: monthStart, lte: monthEnd }, organizationId: orgId },
       include: { staff: { select: { id: true, name: true, staffType: true } } },
       orderBy: { date: 'asc' }
     });

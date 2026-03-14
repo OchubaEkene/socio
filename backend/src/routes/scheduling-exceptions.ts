@@ -18,8 +18,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const { resolved, page = '1', limit = '20' } = req.query;
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
+    const orgId = req.user!.organizationId;
 
-    const where: any = {};
+    const where: any = { organizationId: orgId };
     if (resolved !== undefined) where.isResolved = resolved === 'true';
 
     const [exceptions, total] = await Promise.all([
@@ -43,8 +44,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 // GET unresolved exceptions
 router.get('/unresolved', async (req: AuthRequest, res: Response) => {
   try {
+    const orgId = req.user!.organizationId;
     const exceptions = await prisma.schedulingException.findMany({
-      where: { isResolved: false },
+      where: { isResolved: false, organizationId: orgId },
       include: exceptionInclude,
       orderBy: { createdAt: 'desc' }
     });
@@ -85,8 +87,9 @@ router.post('/', requireRole('admin', 'manager'), async (req: AuthRequest, res: 
       return res.status(400).json({ message: 'Rule ID and message are required' });
     }
 
+    const orgId = req.user!.organizationId;
     const exception = await prisma.schedulingException.create({
-      data: { shiftId: shiftId || null, ruleId, message },
+      data: { shiftId: shiftId || null, ruleId, message, organizationId: orgId },
       include: exceptionInclude
     });
 

@@ -9,9 +9,10 @@ const router = Router();
 router.use(authenticateToken, requireRole('admin', 'manager'));
 
 // GET all schedule plans
-router.get('/', async (_req: AuthRequest, res: Response) => {
+router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const plans = await prisma.schedulePlan.findMany({ orderBy: { createdAt: 'desc' } });
+    const orgId = req.user!.organizationId;
+    const plans = await prisma.schedulePlan.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' } });
     res.json({ success: true, data: plans });
   } catch (error) {
     console.error('GET /schedule-plans error:', error);
@@ -22,11 +23,12 @@ router.get('/', async (_req: AuthRequest, res: Response) => {
 // GET single plan + its shifts + exceptions
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const plan = await prisma.schedulePlan.findUnique({ where: { id: req.params.id } });
+    const orgId = req.user!.organizationId;
+    const plan = await prisma.schedulePlan.findFirst({ where: { id: req.params.id, organizationId: orgId } });
     if (!plan) return res.status(404).json({ success: false, message: 'Plan not found' });
 
     const shifts = await prisma.shift.findMany({
-      where: { date: { gte: plan.weekStart, lte: plan.weekEnd } },
+      where: { date: { gte: plan.weekStart, lte: plan.weekEnd }, organizationId: orgId },
       include: { staff: { select: { id: true, name: true, staffType: true, gender: true } } },
       orderBy: [{ date: 'asc' }, { shiftType: 'asc' }],
     });
@@ -72,15 +74,16 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     // Generate shifts week by week (sequential — each week deletes+writes DB, can't parallelise)
     let totalShifts = 0;
     const allExceptions: any[] = [];
+    const orgId = req.user!.organizationId;
     for (const weekDate of weeks) {
-      const result = await generateSchedule(weekDate);
+      const result = await generateSchedule(weekDate, orgId);
       totalShifts += result.summary.totalShifts;
       allExceptions.push(...result.exceptions);
     }
 
     // Delete existing plan for the same date range if any
     await prisma.schedulePlan.deleteMany({
-      where: { weekStart: startOfWeek(start, { weekStartsOn: 1 }), weekEnd: addDays(startOfWeek(end, { weekStartsOn: 1 }), 6) },
+      where: { weekStart: startOfWeek(start, { weekStartsOn: 1 }), weekEnd: addDays(startOfWeek(end, { weekStartsOn: 1 }), 6), organizationId: orgId },
     });
 
     const plan = await prisma.schedulePlan.create({
@@ -91,6 +94,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         totalShifts,
         exceptionsData: allExceptions as any,
         status: 'draft',
+        organizationId: orgId,
       },
     });
 
@@ -106,12 +110,13 @@ router.post('/:id/send-emails', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { staffIds }: { staffIds?: string[] } = req.body;
+    const orgId = req.user!.organizationId;
 
-    const plan = await prisma.schedulePlan.findUnique({ where: { id } });
+    const plan = await prisma.schedulePlan.findFirst({ where: { id, organizationId: orgId } });
     if (!plan) return res.status(404).json({ success: false, message: 'Plan not found' });
 
     const shifts = await prisma.shift.findMany({
-      where: { date: { gte: plan.weekStart, lte: plan.weekEnd } },
+      where: { date: { gte: plan.weekStart, lte: plan.weekEnd }, organizationId: orgId },
       include: { staff: { select: { id: true, name: true, email: true } } },
       orderBy: { date: 'asc' },
     });

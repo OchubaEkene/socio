@@ -11,7 +11,8 @@ router.use(authenticateToken);
 // GET all rules
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const rules = await prisma.rule.findMany({ orderBy: { createdAt: 'desc' } });
+    const orgId = req.user!.organizationId;
+    const rules = await prisma.rule.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: 'desc' } });
     res.json({ success: true, data: { rules } });
   } catch (error) {
     console.error('GET /rules error:', error);
@@ -38,6 +39,7 @@ router.post('/', requireRole('admin', 'manager'), [
     }
 
     const { name, shiftType, shiftName, startHour, endHour, dayOfWeek, requiredStaff, genderPreference, requiredQualifications, priority } = req.body;
+    const orgId = req.user!.organizationId;
 
     const rule = await prisma.rule.create({
       data: {
@@ -48,7 +50,8 @@ router.post('/', requireRole('admin', 'manager'), [
         requiredStaff: parseInt(requiredStaff),
         genderPreference,
         requiredQualifications: Array.isArray(requiredQualifications) ? requiredQualifications : [],
-        priority: priority ? parseInt(priority) : 1
+        priority: priority ? parseInt(priority) : 1,
+        organizationId: orgId,
       }
     });
 
@@ -107,9 +110,10 @@ router.put('/:id', requireRole('admin', 'manager'), [
 });
 
 // DELETE all rules (used by onboarding to reset before re-creating) — managers and admins only
-router.delete('/all', requireRole('admin', 'manager'), async (_req: AuthRequest, res: Response) => {
+router.delete('/all', requireRole('admin', 'manager'), async (req: AuthRequest, res: Response) => {
   try {
-    const result = await prisma.rule.deleteMany({})
+    const orgId = req.user!.organizationId;
+    const result = await prisma.rule.deleteMany({ where: { organizationId: orgId } })
     res.json({ success: true, data: { deleted: result.count } })
   } catch (error) {
     console.error('DELETE /rules/all error:', error)

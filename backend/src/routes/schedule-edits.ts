@@ -19,8 +19,9 @@ router.post('/assign', [
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { staffId, shiftId, date, shiftType } = req.body;
+    const orgId = req.user!.organizationId;
 
-    const staff = await prisma.staff.findUnique({ where: { id: staffId } });
+    const staff = await prisma.staff.findFirst({ where: { id: staffId, organizationId: orgId } });
     if (!staff) return res.status(404).json({ message: 'Staff member not found' });
 
     if (shiftId && shiftId !== 'new') {
@@ -54,7 +55,8 @@ router.post('/assign', [
       data: {
         staffId, shiftType, date: new Date(date),
         startTime: shiftType === 'day' ? new Date(new Date(dateMs).setHours(8, 0, 0, 0)) : new Date(new Date(dateMs).setHours(20, 0, 0, 0)),
-        endTime: shiftType === 'day' ? new Date(new Date(dateMs).setHours(20, 0, 0, 0)) : new Date(new Date(dateMs + 86400000).setHours(8, 0, 0, 0))
+        endTime: shiftType === 'day' ? new Date(new Date(dateMs).setHours(20, 0, 0, 0)) : new Date(new Date(dateMs + 86400000).setHours(8, 0, 0, 0)),
+        organizationId: orgId,
       },
       include: { staff: { select: { id: true, name: true, gender: true, staffType: true } } }
     });
@@ -148,9 +150,10 @@ router.get('/available-staff', async (req: AuthRequest, res: Response) => {
 
     const targetDate = new Date(date as string);
 
+    const orgId = req.user!.organizationId;
     const [allStaff, existingAssignments, availabilities] = await Promise.all([
-      prisma.staff.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } }),
-      prisma.shift.findMany({ where: { date: targetDate } }),
+      prisma.staff.findMany({ where: { isActive: true, organizationId: orgId }, orderBy: { name: 'asc' } }),
+      prisma.shift.findMany({ where: { date: targetDate, organizationId: orgId } }),
       prisma.availability.findMany({ where: { startTime: { lte: targetDate }, endTime: { gte: targetDate } } })
     ]);
 

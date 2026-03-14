@@ -1,21 +1,22 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import prisma from '../lib/prisma';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { differenceInDays, addDays } from 'date-fns';
 import { sendApprovalNotification } from '../services/emailService';
 
 const router = Router();
 
 // GET all vacation requests (with filtering)
-router.get('/', authenticateToken, async (req: Request, res: Response) => {
+router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { status, staffId, vacationType, startDate, endDate, page = '1', limit = '20' } = req.query;
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
+    const orgId = req.user!.organizationId;
 
-    const whereClause: any = {};
+    const whereClause: any = { organizationId: orgId };
     
     if (status) {
       whereClause.status = status;
@@ -96,10 +97,11 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
 });
 
 // GET pending vacation requests (for managers)
-router.get('/pending', authenticateToken, async (req: Request, res: Response) => {
+router.get('/pending', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const orgId = req.user!.organizationId;
     const vacations = await prisma.vacationRequest.findMany({
-      where: { status: 'PENDING' },
+      where: { status: 'PENDING', organizationId: orgId },
       include: {
         staff: {
           select: {
@@ -127,9 +129,11 @@ router.get('/pending', authenticateToken, async (req: Request, res: Response) =>
 });
 
 // GET vacation policies
-router.get('/policies', authenticateToken, async (req: Request, res: Response) => {
+router.get('/policies', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const orgId = req.user!.organizationId;
     const policies = await prisma.vacationPolicy.findMany({
+      where: { organizationId: orgId },
       orderBy: [
         { staffType: 'asc' },
         { vacationType: 'asc' }
@@ -157,18 +161,19 @@ router.post('/', authenticateToken, [
   body('endDate').isISO8601().withMessage('End date must be a valid date'),
   body('reason').isString().notEmpty().withMessage('Reason is required'),
   body('notes').optional().isString()
-], async (req: Request, res: Response) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: 'Validation failed',
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
     const { staffId, vacationType, startDate, endDate, reason, notes } = req.body;
+    const orgId = req.user!.organizationId;
 
     // Check if staff exists
     const staff = await prisma.staff.findUnique({
@@ -189,7 +194,8 @@ router.post('/', authenticateToken, [
     const policy = await prisma.vacationPolicy.findFirst({
       where: {
         staffType: staff.staffType,
-        vacationType
+        vacationType,
+        organizationId: orgId,
       }
     });
 
@@ -241,7 +247,8 @@ router.post('/', authenticateToken, [
         endDate: new Date(endDate),
         totalDays,
         reason,
-        notes
+        notes,
+        organizationId: orgId,
       },
       include: {
         staff: {
@@ -375,24 +382,26 @@ router.post('/policies', authenticateToken, [
   body('carryOverLimit').optional().isInt({ min: 0 }).withMessage('Carry over limit must be a positive integer'),
   body('minNoticeDays').optional().isInt({ min: 0 }).withMessage('Minimum notice days must be a positive integer'),
   body('maxConsecutiveDays').optional().isInt({ min: 1 }).withMessage('Maximum consecutive days must be at least 1')
-], async (req: Request, res: Response) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: 'Validation failed',
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
     const { staffType, vacationType, annualAllowance, carryOverLimit = 0, minNoticeDays = 14, maxConsecutiveDays = 30 } = req.body;
+    const orgId = req.user!.organizationId;
 
     // Check if policy already exists
     const existingPolicy = await prisma.vacationPolicy.findFirst({
       where: {
         staffType,
-        vacationType
+        vacationType,
+        organizationId: orgId,
       }
     });
 
@@ -410,7 +419,8 @@ router.post('/policies', authenticateToken, [
         annualAllowance,
         carryOverLimit,
         minNoticeDays,
-        maxConsecutiveDays
+        maxConsecutiveDays,
+        organizationId: orgId,
       }
     });
 
@@ -429,14 +439,15 @@ router.post('/policies', authenticateToken, [
 });
 
 // GET vacation balance for a staff member (days used vs allowance this year)
-router.get('/balance/:staffId', authenticateToken, async (req: Request, res: Response) => {
+router.get('/balance/:staffId', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { staffId } = req.params;
+    const orgId = req.user!.organizationId;
     const year = new Date().getFullYear();
     const yearStart = new Date(year, 0, 1);
     const yearEnd = new Date(year, 11, 31, 23, 59, 59);
 
-    const staff = await prisma.staff.findUnique({ where: { id: staffId } });
+    const staff = await prisma.staff.findFirst({ where: { id: staffId, organizationId: orgId } });
     if (!staff) return res.status(404).json({ success: false, message: 'Staff member not found' });
 
     // Sum approved vacation days per type this year
@@ -450,7 +461,7 @@ router.get('/balance/:staffId', authenticateToken, async (req: Request, res: Res
     });
 
     // Get policies for this staff type
-    const policies = await prisma.vacationPolicy.findMany({ where: { staffType: staff.staffType } });
+    const policies = await prisma.vacationPolicy.findMany({ where: { staffType: staff.staffType, organizationId: orgId } });
 
     const balanceByType: Record<string, { used: number; allowance: number; remaining: number }> = {};
 

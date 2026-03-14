@@ -42,23 +42,39 @@ router.post('/register', [
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    const user = await prisma.user.create({
-      data: { email, username, password: hashedPassword, firstName, lastName, role: role || 'staff' },
-      select: {
-        id: true, email: true, username: true, firstName: true, lastName: true,
-        role: true, staffId: true,
-        staff: { select: { id: true, name: true, staffType: true, gender: true } },
-        createdAt: true, updatedAt: true
-      }
+    // Create organization + user in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      const org = await tx.organization.create({
+        data: {
+          name: `${firstName} ${lastName}'s Organisation`,
+          updatedAt: new Date(),
+        }
+      });
+
+      const newUser = await tx.user.create({
+        data: {
+          email, username, password: hashedPassword, firstName, lastName,
+          role: role || 'admin', // first user of an org is admin
+          organizationId: org.id
+        },
+        select: {
+          id: true, email: true, username: true, firstName: true, lastName: true,
+          role: true, staffId: true, organizationId: true,
+          staff: { select: { id: true, name: true, staffType: true, gender: true } },
+          createdAt: true, updatedAt: true
+        }
+      });
+
+      return newUser;
     });
 
     const token = jwt.sign(
-      { userId: user.id },
+      { userId: result.id },
       getJwtSecret(),
       { expiresIn: '8h' }
     );
 
-    res.status(201).json({ message: 'User registered successfully', user, token });
+    return res.status(201).json({ message: 'User registered successfully', user: result, token });
   } catch (error) {
     console.error('Registration error:', error);
     return res.status(500).json({ message: 'Registration failed' });
@@ -82,7 +98,7 @@ router.post('/login', [
       where: { email },
       select: {
         id: true, email: true, username: true, password: true,
-        firstName: true, lastName: true, role: true, staffId: true,
+        firstName: true, lastName: true, role: true, staffId: true, organizationId: true,
         staff: { select: { id: true, name: true, staffType: true, gender: true } }
       }
     });
@@ -132,7 +148,7 @@ router.post('/google', async (req: Request, res: Response) => {
     const { email, given_name, family_name, name, picture } = payload;
     const userSelect = {
       id: true, email: true, username: true, firstName: true, lastName: true,
-      role: true, staffId: true, avatar: true,
+      role: true, staffId: true, avatar: true, organizationId: true,
       staff: { select: { id: true, name: true, staffType: true, gender: true } },
     };
 
@@ -147,17 +163,24 @@ router.post('/google', async (req: Request, res: Response) => {
       if (taken) username = base + crypto.randomBytes(3).toString('hex');
 
       const hashedPassword = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
-      user = await prisma.user.create({
-        data: {
-          email,
-          username,
-          password: hashedPassword,
-          firstName: given_name || name?.split(' ')[0] || '',
-          lastName: family_name || name?.split(' ').slice(1).join(' ') || '',
-          role: role || 'staff',
-          avatar: picture || null,
-        },
-        select: userSelect,
+      const googleFirstName = given_name || name?.split(' ')[0] || '';
+      user = await prisma.$transaction(async (tx) => {
+        const org = await tx.organization.create({
+          data: { name: `${googleFirstName}'s Organisation`, updatedAt: new Date() }
+        });
+        return tx.user.create({
+          data: {
+            email,
+            username,
+            password: hashedPassword,
+            firstName: googleFirstName,
+            lastName: family_name || name?.split(' ').slice(1).join(' ') || '',
+            role: role || 'admin',
+            avatar: picture || null,
+            organizationId: org.id,
+          },
+          select: userSelect,
+        });
       });
     }
 
@@ -176,7 +199,7 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res: Response) => 
       where: { id: req.user!.id },
       select: {
         id: true, email: true, username: true, firstName: true, lastName: true,
-        role: true, staffId: true,
+        role: true, staffId: true, organizationId: true,
         staff: { select: { id: true, name: true, staffType: true, gender: true } },
         bio: true, avatar: true, createdAt: true, updatedAt: true,
         _count: { select: { roleAssignments: true } }
@@ -188,9 +211,10 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res: Response) => 
     }
 
     // Compute onboarding state so frontend doesn't rely solely on localStorage
+    const orgId = req.user!.organizationId;
     const [staffCount, ruleCount] = await Promise.all([
-      prisma.staff.count({ where: { isActive: true } }),
-      prisma.rule.count(),
+      prisma.staff.count({ where: { isActive: true, ...(orgId ? { organizationId: orgId } : {}) } }),
+      prisma.rule.count({ where: orgId ? { organizationId: orgId } : {} }),
     ]);
 
     res.json({
@@ -240,6 +264,7 @@ router.get('/users', authenticateToken, async (req: AuthRequest, res: Response) 
       return res.status(403).json({ success: false, message: 'Insufficient permissions' });
     }
     const users = await prisma.user.findMany({
+      where: { organizationId: req.user!.organizationId },
       select: {
         id: true, email: true, username: true, firstName: true, lastName: true,
         role: true, staffId: true,

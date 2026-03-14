@@ -10,6 +10,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users               User[]
+  staff               Staff[]
+  rules               Rule[]
+  shifts              Shift[]
+  schedulePlans       SchedulePlan[]
+  orgSettings         OrgSettings?
+  absences            Absence[]
+  vacationRequests    VacationRequest[]
+  vacationPolicies    VacationPolicy[]
+  shiftSwaps          ShiftSwap[]
+  workingTimeAccounts WorkingTimeAccount[]
+  timeRecords         TimeRecord[]
+  schedulingExceptions SchedulingException[]
+
+  @@map("organizations")
+}
+
 // Enums
 enum Gender {
   male
@@ -62,6 +85,9 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
   // Relations
   absenceApprovals Absence[] @relation("AbsenceApprovals")
   vacationApprovals VacationRequest[] @relation("VacationApprovals")
@@ -85,7 +111,9 @@ model Staff {
   staffType  StaffType
   qualifications String[] @default([])
   maxHoursPerWeek Int?   // null = no limit
-  isActive   Boolean   @default(true)  // soft delete — never hard-delete staff
+  isActive       Boolean   @default(true)  // soft delete — never hard-delete staff
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
@@ -122,7 +150,9 @@ model Availability {
 model Shift {
   id        String    @id @default(cuid())
   staffId   String
-  ruleId    String?   // nullable: manually-created shifts have no rule
+  ruleId         String?   // nullable: manually-created shifts have no rule
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
   shiftType ShiftType
   shiftName String?   // custom label copied from the rule e.g. "Morning", "Afternoon"
   date      DateTime  @db.Date
@@ -155,6 +185,8 @@ model Rule {
   genderPreference       GenderPreference
   requiredQualifications String[]         @default([])
   priority               Int              @default(1)
+  organizationId         String?
+  organization           Organization?    @relation(fields: [organizationId], references: [id])
   createdAt              DateTime         @default(now())
   updatedAt              DateTime         @updatedAt
 
@@ -171,9 +203,11 @@ model SchedulingException {
   shiftId    String?  // Nullable foreign key to Shift
   ruleId     String
   message    String
-  isResolved Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  isResolved     Boolean  @default(false)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   // Relations
   shift Shift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
@@ -206,10 +240,12 @@ model Absence {
   endDate     DateTime      @db.Date
   reason      String
   notes       String?
-  approvedBy  String?       // User ID who approved/rejected
-  approvedAt  DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  approvedBy     String?
+  approvedAt     DateTime?
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   // Relations
   staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
@@ -239,10 +275,12 @@ model VacationRequest {
   totalDays     Int
   reason        String
   notes         String?
-  approvedBy    String?       // User ID who approved/rejected
-  approvedAt    DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  approvedBy     String?
+  approvedAt     DateTime?
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   // Relations
   staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
@@ -258,9 +296,11 @@ model VacationPolicy {
   annualAllowance   Int           // Days per year
   carryOverLimit    Int           @default(0) // Days that can be carried over
   minNoticeDays     Int           @default(14) // Minimum notice required
-  maxConsecutiveDays Int          @default(30) // Maximum consecutive days
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  maxConsecutiveDays Int           @default(30)
+  organizationId     String?
+  organization       Organization? @relation(fields: [organizationId], references: [id])
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   @@map("vacation_policies")
 }
@@ -283,8 +323,10 @@ model ShiftSwap {
   status          SwapStatus @default(PENDING)
   requesterReason String?
   responderReason String?
-  approvedBy      String?    // Manager who approved
+  approvedBy      String?
   approvedAt      DateTime?
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id])
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
@@ -325,6 +367,8 @@ model WorkingTimeAccount {
   year            Int
   month           Int?
   isActive        Boolean          @default(true)
+  organizationId  String?
+  organization    Organization?    @relation(fields: [organizationId], references: [id])
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
@@ -377,6 +421,8 @@ model TimeRecord {
   approvedBy      String?
   approvedAt      DateTime?
   notes           String?
+  organizationId  String?
+  organization    Organization?    @relation(fields: [organizationId], references: [id])
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
@@ -597,10 +643,12 @@ model SchedulePlan {
   name           String
   weekStart      DateTime
   weekEnd        DateTime
-  status         String   @default("draft") // draft | published
+  status         String   @default("draft")
   totalShifts    Int      @default(0)
   emailsSent     Boolean  @default(false)
   exceptionsData Json     @default("[]")
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -608,7 +656,8 @@ model SchedulePlan {
 }
 
 model OrgSettings {
-  id               String   @id @default("singleton")
+  id               String   @id  // equals organizationId
+  organization     Organization @relation(fields: [id], references: [id])
   orgName          String   @default("My Organisation")
   timezone         String   @default("UTC")
   dayShiftStart    Int      @default(8)

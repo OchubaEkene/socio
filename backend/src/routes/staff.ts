@@ -16,8 +16,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const skip = (page - 1) * limit;
     const { search, staffType } = req.query;
 
+    const orgId = req.user!.organizationId;
     const showArchived = req.query.showArchived === 'true';
-    const where: any = { isActive: showArchived ? undefined : true };
+    const where: any = { isActive: showArchived ? undefined : true, organizationId: orgId };
     if (search) where.name = { contains: search as string, mode: 'insensitive' };
     if (staffType && staffType !== 'all') where.staffType = staffType;
 
@@ -77,6 +78,7 @@ router.post('/', requireRole('admin', 'manager'), [
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { name, gender, staffType, email, qualifications, maxHoursPerWeek } = req.body;
+    const orgId = req.user!.organizationId;
 
     const staff = await prisma.staff.create({
       data: {
@@ -84,6 +86,7 @@ router.post('/', requireRole('admin', 'manager'), [
         email: email === '' ? null : (email || null),
         qualifications: qualifications || [],
         maxHoursPerWeek: maxHoursPerWeek != null ? parseInt(maxHoursPerWeek) : null,
+        organizationId: orgId,
       },
       include: { _count: { select: { availabilities: true, shifts: true, absences: true } } }
     });

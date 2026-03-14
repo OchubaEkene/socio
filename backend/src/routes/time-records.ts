@@ -14,7 +14,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
 
-    const where: any = {};
+    const orgId = req.user!.organizationId;
+    const where: any = { organizationId: orgId };
 
     // Staff can only see their own records
     if (req.user!.role === 'staff') {
@@ -86,6 +87,7 @@ router.post('/', [
       totalHours = Math.max(0, diffMs / 3600000 - breakMinutes / 60);
     }
 
+    const orgId = req.user!.organizationId;
     const timeRecord = await prisma.timeRecord.create({
       data: {
         staffId,
@@ -94,7 +96,8 @@ router.post('/', [
         ...(totalHours !== undefined && { totalHours }),
         breakMinutes: parseInt(breakMinutes),
         notes,
-        ...(shiftId && { shiftId })
+        ...(shiftId && { shiftId }),
+        organizationId: orgId,
       },
       include: {
         staff: { select: { id: true, name: true, staffType: true } },

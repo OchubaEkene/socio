@@ -1,20 +1,21 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import prisma from '../lib/prisma';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { sendApprovalNotification } from '../services/emailService';
 
 const router = Router();
 
 // GET all shift swaps (with filtering)
-router.get('/', authenticateToken, async (req: Request, res: Response) => {
+router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { status, requesterId, responderId, page = '1', limit = '20' } = req.query;
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
+    const orgId = req.user!.organizationId;
 
-    const whereClause: any = {};
+    const whereClause: any = { organizationId: orgId };
     
     if (status) {
       whereClause.status = status;
@@ -102,10 +103,11 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
 });
 
 // GET pending shift swaps (for managers)
-router.get('/pending', authenticateToken, async (req: Request, res: Response) => {
+router.get('/pending', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const orgId = req.user!.organizationId;
     const swaps = await prisma.shiftSwap.findMany({
-      where: { status: 'PENDING' },
+      where: { status: 'PENDING', organizationId: orgId },
       include: {
         requester: {
           select: {
@@ -157,9 +159,10 @@ router.get('/pending', authenticateToken, async (req: Request, res: Response) =>
 });
 
 // GET shift swaps for a specific staff member
-router.get('/my-swaps', authenticateToken, async (req: Request, res: Response) => {
+router.get('/my-swaps', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = req.user!.id;
+    const orgId = req.user!.organizationId;
 
     // Get staff ID for the current user via their User record
     const currentUser = await prisma.user.findUnique({
@@ -178,6 +181,7 @@ router.get('/my-swaps', authenticateToken, async (req: Request, res: Response) =
 
     const swaps = await prisma.shiftSwap.findMany({
       where: {
+        organizationId: orgId,
         OR: [
           { requesterId: staff.id },
           { responderId: staff.id }
@@ -247,18 +251,19 @@ router.post('/', authenticateToken, [
   body('requesterShiftId').isString().notEmpty().withMessage('Requester shift ID is required'),
   body('responderShiftId').isString().notEmpty().withMessage('Responder shift ID is required'),
   body('requesterReason').optional().isString()
-], async (req: Request, res: Response) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: 'Validation failed',
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
     const { requesterId, responderId, requesterShiftId, responderShiftId, requesterReason } = req.body;
+    const orgId = req.user!.organizationId;
 
     // Check if both staff members exist
     const [requester, responder] = await Promise.all([
@@ -330,7 +335,8 @@ router.post('/', authenticateToken, [
         responderId,
         requesterShiftId,
         responderShiftId,
-        requesterReason
+        requesterReason,
+        organizationId: orgId,
       },
       include: {
         requester: {
@@ -386,20 +392,20 @@ router.post('/', authenticateToken, [
 router.patch('/:id/respond', authenticateToken, [
   body('status').isIn(['STAFF_APPROVED', 'REJECTED']).withMessage('Status must be STAFF_APPROVED or REJECTED'),
   body('responderReason').optional().isString()
-], async (req: Request, res: Response) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: 'Validation failed',
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
     const { id } = req.params;
     const { status, responderReason } = req.body;
-    const userId = (req as any).user.id;
+    const userId = req.user!.id;
 
     // Get staff ID for the current user via their User record
     const currentUser = await prisma.user.findUnique({
@@ -534,20 +540,20 @@ router.patch('/:id/respond', authenticateToken, [
 // PATCH approve shift swap (manager only)
 router.patch('/:id/approve', authenticateToken, [
   body('status').isIn(['APPROVED', 'REJECTED']).withMessage('Status must be APPROVED or REJECTED')
-], async (req: Request, res: Response) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: 'Validation failed',
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
     const { id } = req.params;
     const { status } = req.body;
-    const approverId = (req as any).user.id;
+    const approverId = req.user!.id;
 
     const swap = await prisma.shiftSwap.findUnique({
       where: { id },
@@ -689,10 +695,10 @@ router.patch('/:id/approve', authenticateToken, [
 });
 
 // DELETE cancel shift swap (only by the requester)
-router.delete('/:id', authenticateToken, async (req: Request, res: Response) => {
+router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = (req as any).user.id;
+    const userId = req.user!.id;
 
     // Get staff ID for the current user via their User record
     const currentUser = await prisma.user.findUnique({

@@ -1,20 +1,21 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import prisma from '../lib/prisma';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { differenceInHours, parseISO } from 'date-fns';
 
 const router = Router();
 
 // GET all working time accounts (with filtering)
-router.get('/', authenticateToken, async (req: Request, res: Response) => {
+router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { staffId, accountType, year, month, page = '1', limit = '20' } = req.query;
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
+    const orgId = req.user!.organizationId;
 
-    const whereClause: any = { isActive: true };
+    const whereClause: any = { isActive: true, organizationId: orgId };
     
     if (staffId) {
       whereClause.staffId = staffId;
@@ -180,18 +181,19 @@ router.post('/', authenticateToken, [
   body('month').optional().isInt({ min: 1, max: 12 }).withMessage('Month must be between 1 and 12'),
   body('maxBalance').optional().isFloat({ min: 0 }).withMessage('Max balance must be a positive number'),
   body('minBalance').optional().isFloat({ max: 0 }).withMessage('Min balance must be a negative number or zero')
-], async (req: Request, res: Response) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: 'Validation failed',
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
     const { staffId, accountType, year, month, maxBalance, minBalance } = req.body;
+    const orgId = req.user!.organizationId;
 
     // Check if staff exists
     const staff = await prisma.staff.findUnique({
@@ -229,7 +231,8 @@ router.post('/', authenticateToken, [
         year,
         month: month || null,
         maxBalance,
-        minBalance
+        minBalance,
+        organizationId: orgId,
       },
       include: {
         staff: {
@@ -265,20 +268,20 @@ router.post('/:id/transactions', authenticateToken, [
   body('referenceId').optional().isString(),
   body('method').optional().isIn(['MANUAL', 'AUTOMATIC', 'SHYFTPLAN', 'SAP_INTEGRATION', 'API_INTEGRATION']),
   body('notes').optional().isString()
-], async (req: Request, res: Response) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: 'Validation failed',
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
     const { id } = req.params;
     const { transactionType, amount, description, referenceType, referenceId, method = 'MANUAL', notes } = req.body;
-    const recordedBy = (req as any).user.id;
+    const recordedBy = req.user!.id;
 
     // Check if account exists
     const account = await prisma.workingTimeAccount.findUnique({
@@ -371,20 +374,20 @@ router.post('/:id/transactions', authenticateToken, [
 // POST calculate time from shift (automatic transaction)
 router.post('/:id/calculate-from-shift', authenticateToken, [
   body('shiftId').isString().notEmpty().withMessage('Shift ID is required')
-], async (req: Request, res: Response) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: 'Validation failed',
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
     const { id } = req.params;
     const { shiftId } = req.body;
-    const recordedBy = (req as any).user.id;
+    const recordedBy = req.user!.id;
 
     // Check if account exists
     const account = await prisma.workingTimeAccount.findUnique({

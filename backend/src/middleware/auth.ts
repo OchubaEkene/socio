@@ -11,6 +11,7 @@ export interface AuthRequest extends Request {
     lastName?: string;
     role: 'admin' | 'manager' | 'staff';
     staffId?: string;
+    organizationId?: string;
   };
 }
 
@@ -47,6 +48,7 @@ export const authenticateToken = async (
         lastName: true,
         role: true,
         staffId: true,
+        organizationId: true,
       }
     });
 
@@ -58,6 +60,7 @@ export const authenticateToken = async (
     req.user = {
       ...user,
       staffId: user.staffId ?? undefined,
+      organizationId: user.organizationId ?? undefined,
     };
     next();
   } catch (error) {
@@ -109,12 +112,14 @@ export const optionalAuth = async (
           lastName: true,
           role: true,
           staffId: true,
+          organizationId: true,
         }
       });
       if (user) {
         req.user = {
           ...user,
           staffId: user.staffId ?? undefined,
+          organizationId: user.organizationId ?? undefined,
         };
       }
     }

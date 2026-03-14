@@ -1,20 +1,21 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import prisma from '../lib/prisma';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { sendApprovalNotification } from '../services/emailService';
 
 const router = Router();
 
 // GET all absences (with filtering)
-router.get('/', authenticateToken, async (req: Request, res: Response) => {
+router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { status, staffId, startDate, endDate, page = '1', limit = '20' } = req.query;
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
+    const orgId = req.user!.organizationId;
 
-    const whereClause: any = {};
+    const whereClause: any = { organizationId: orgId };
     
     if (status) {
       whereClause.status = status;
@@ -90,10 +91,11 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
 });
 
 // GET pending absences (for managers)
-router.get('/pending', authenticateToken, async (req: Request, res: Response) => {
+router.get('/pending', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const orgId = req.user!.organizationId;
     const absences = await prisma.absence.findMany({
-      where: { status: 'PENDING' },
+      where: { status: 'PENDING', organizationId: orgId },
       include: {
         staff: {
           select: {
@@ -127,18 +129,19 @@ router.post('/', authenticateToken, [
   body('endDate').isISO8601().withMessage('End date must be a valid date'),
   body('reason').isString().notEmpty().withMessage('Reason is required'),
   body('notes').optional().isString()
-], async (req: Request, res: Response) => {
+], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: 'Validation failed',
-        errors: errors.array() 
+        errors: errors.array()
       });
     }
 
     const { staffId, absenceType, startDate, endDate, reason, notes } = req.body;
+    const orgId = req.user!.organizationId;
 
     // Check if staff exists
     const staff = await prisma.staff.findUnique({
@@ -180,7 +183,8 @@ router.post('/', authenticateToken, [
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         reason,
-        notes
+        notes,
+        organizationId: orgId,
       },
       include: {
         staff: {

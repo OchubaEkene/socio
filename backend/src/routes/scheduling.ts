@@ -27,7 +27,8 @@ router.post('/generate', [
       return res.status(400).json({ success: false, message: 'Cannot generate a schedule more than 4 weeks in the past.' });
     }
 
-    const result = await generateSchedule(weekStart);
+    const orgId = req.user!.organizationId;
+    const result = await generateSchedule(weekStart, orgId);
 
     res.json({ success: true, message: 'Schedule generated successfully', data: result });
   } catch (error: any) {
@@ -48,7 +49,8 @@ router.get('/week/:weekStart', authenticateToken, async (req: AuthRequest, res: 
       return res.status(400).json({ success: false, message: 'Invalid date format. Use YYYY-MM-DD' });
     }
 
-    const result = await getWeekSchedule(weekStart);
+    const orgId = req.user!.organizationId;
+    const result = await getWeekSchedule(weekStart, orgId);
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('GET /scheduling/week/:weekStart error:', error);
@@ -59,8 +61,9 @@ router.get('/week/:weekStart', authenticateToken, async (req: AuthRequest, res: 
 // GET current week schedule — read only
 router.get('/current-week', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const orgId = req.user!.organizationId;
     const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-    const result = await getWeekSchedule(weekStart);
+    const result = await getWeekSchedule(weekStart, orgId);
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('GET /scheduling/current-week error:', error);

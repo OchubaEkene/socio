@@ -1,17 +1,18 @@
-import { Router, Request, Response } from 'express'
+import { Router, Response } from 'express'
 import prisma from '../lib/prisma'
-import { authenticateToken } from '../middleware/auth'
+import { authenticateToken, AuthRequest } from '../middleware/auth'
 
 const router = Router()
 router.use(authenticateToken)
 
 // GET org settings (auto-creates singleton if missing)
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: AuthRequest, res: Response) => {
   try {
+    const orgId = req.user!.organizationId ?? 'default-org'
     const settings = await prisma.orgSettings.upsert({
-      where: { id: 'singleton' },
+      where: { id: orgId },
       update: {},
-      create: { id: 'singleton' },
+      create: { id: orgId },
     })
     res.json({ success: true, data: settings })
   } catch (error) {
@@ -21,8 +22,9 @@ router.get('/', async (_req: Request, res: Response) => {
 })
 
 // PUT org settings
-router.put('/', async (req: Request, res: Response) => {
+router.put('/', async (req: AuthRequest, res: Response) => {
   try {
+    const orgId = req.user!.organizationId ?? 'default-org'
     const {
       orgName, timezone,
       dayShiftStart, dayShiftEnd,
@@ -32,7 +34,7 @@ router.put('/', async (req: Request, res: Response) => {
     } = req.body
 
     const settings = await prisma.orgSettings.upsert({
-      where: { id: 'singleton' },
+      where: { id: orgId },
       update: {
         ...(orgName !== undefined && { orgName }),
         ...(timezone !== undefined && { timezone }),
@@ -43,28 +45,28 @@ router.put('/', async (req: Request, res: Response) => {
         ...(defaultDayStaff !== undefined && { defaultDayStaff: Number(defaultDayStaff) }),
         ...(defaultNightStaff !== undefined && { defaultNightStaff: Number(defaultNightStaff) }),
       },
-      create: { id: 'singleton' },
+      create: { id: orgId },
     })
 
     // Only sync defaults to rules when explicitly requested
     if (syncRulesToDefaults) {
       if (defaultDayStaff !== undefined) {
-        await prisma.rule.updateMany({ where: { shiftType: 'day' }, data: { requiredStaff: Number(defaultDayStaff) } })
+        await prisma.rule.updateMany({ where: { shiftType: 'day', organizationId: orgId }, data: { requiredStaff: Number(defaultDayStaff) } })
       }
       if (defaultNightStaff !== undefined) {
-        await prisma.rule.updateMany({ where: { shiftType: 'night' }, data: { requiredStaff: Number(defaultNightStaff) } })
+        await prisma.rule.updateMany({ where: { shiftType: 'night', organizationId: orgId }, data: { requiredStaff: Number(defaultNightStaff) } })
       }
       if (dayShiftStart !== undefined || dayShiftEnd !== undefined) {
         const dayUpdate: any = {}
         if (dayShiftStart !== undefined) dayUpdate.startHour = Number(dayShiftStart)
         if (dayShiftEnd !== undefined) dayUpdate.endHour = Number(dayShiftEnd)
-        await prisma.rule.updateMany({ where: { shiftType: 'day' }, data: dayUpdate })
+        await prisma.rule.updateMany({ where: { shiftType: 'day', organizationId: orgId }, data: dayUpdate })
       }
       if (nightShiftStart !== undefined || nightShiftEnd !== undefined) {
         const nightUpdate: any = {}
         if (nightShiftStart !== undefined) nightUpdate.startHour = Number(nightShiftStart)
         if (nightShiftEnd !== undefined) nightUpdate.endHour = Number(nightShiftEnd)
-        await prisma.rule.updateMany({ where: { shiftType: 'night' }, data: nightUpdate })
+        await prisma.rule.updateMany({ where: { shiftType: 'night', organizationId: orgId }, data: nightUpdate })
       }
     }
 

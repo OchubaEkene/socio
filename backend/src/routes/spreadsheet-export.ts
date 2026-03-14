@@ -21,16 +21,18 @@ router.post('/excel', [
     }
 
     const { weekStart } = req.body;
+    const orgId = req.user!.organizationId;
     const weekStartDate = startOfWeek(new Date(weekStart), { weekStartsOn: 1 });
     const weekEndDate = addDays(weekStartDate, 6);
 
-    const scheduleResult = await getWeekSchedule(weekStart);
+    const scheduleResult = await getWeekSchedule(weekStart, orgId);
 
     const absenceRecords = await prisma.absence.findMany({
       where: {
         status: 'APPROVED',
         startDate: { lte: weekEndDate },
         endDate: { gte: weekStartDate },
+        organizationId: orgId,
       },
       include: { staff: { select: { name: true } } },
       orderBy: { startDate: 'asc' },
@@ -70,7 +72,8 @@ router.post('/csv', [
     }
 
     const { weekStart } = req.body;
-    const scheduleResult = await getWeekSchedule(weekStart);
+    const orgId = req.user!.organizationId;
+    const scheduleResult = await getWeekSchedule(weekStart, orgId);
 
     const csvContent = generateCSVRoster(scheduleResult);
 

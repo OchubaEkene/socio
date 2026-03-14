@@ -38,14 +38,16 @@ export interface ScheduleResult {
   }
 }
 
-export async function generateSchedule(weekStart: string | Date): Promise<ScheduleResult> {
+export async function generateSchedule(weekStart: string | Date, organizationId?: string): Promise<ScheduleResult> {
   const startDate = typeof weekStart === 'string' ? parseISO(weekStart) : weekStart
   const weekStartDate = startOfWeek(startDate, { weekStartsOn: 1 })
   const weekEndDate = addDays(weekStartDate, 6)
 
+  const orgFilter = organizationId ? { organizationId } : {}
+
   // Idempotency: delete existing shifts and their working time transactions for this week
   const existingShifts = await prisma.shift.findMany({
-    where: { date: { gte: weekStartDate, lte: weekEndDate } },
+    where: { date: { gte: weekStartDate, lte: weekEndDate }, ...orgFilter },
     select: { id: true }
   })
   const existingShiftIds = existingShifts.map(s => s.id)
@@ -55,21 +57,22 @@ export async function generateSchedule(weekStart: string | Date): Promise<Schedu
     })
   }
   await prisma.shift.deleteMany({
-    where: { date: { gte: weekStartDate, lte: weekEndDate } }
+    where: { date: { gte: weekStartDate, lte: weekEndDate }, ...orgFilter }
   })
 
   const exceptions: SchedulingException[] = []
   const generatedShifts: GeneratedShift[] = []
 
   try {
-    const allStaff = await prisma.staff.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } })
+    const allStaff = await prisma.staff.findMany({ where: { isActive: true, ...orgFilter }, orderBy: { name: 'asc' } })
 
     // Fetch approved absences overlapping this week
     const approvedAbsences = await prisma.absence.findMany({
       where: {
         status: 'APPROVED',
         startDate: { lte: weekEndDate },
-        endDate: { gte: weekStartDate }
+        endDate: { gte: weekStartDate },
+        ...orgFilter
       },
       select: { staffId: true, startDate: true, endDate: true }
     })
@@ -90,7 +93,7 @@ export async function generateSchedule(weekStart: string | Date): Promise<Schedu
       orderBy: { startTime: 'asc' }
     })
 
-    const rules = await prisma.rule.findMany({ orderBy: { priority: 'desc' } })
+    const rules = await prisma.rule.findMany({ where: { ...orgFilter }, orderBy: { priority: 'desc' } })
 
     if (rules.length === 0) {
       throw new Error('NO_RULES: No shift rules are configured. Please add rules before generating a schedule.')
@@ -100,7 +103,7 @@ export async function generateSchedule(weekStart: string | Date): Promise<Schedu
     const previousWeekStart = addDays(weekStartDate, -7)
     const previousWeekEnd = addDays(weekStartDate, -1)
     const previousShifts = await prisma.shift.findMany({
-      where: { date: { gte: previousWeekStart, lte: previousWeekEnd } }
+      where: { date: { gte: previousWeekStart, lte: previousWeekEnd }, ...orgFilter }
     })
 
     const staffShiftCounts = new Map<string, number>()
@@ -140,8 +143,8 @@ export async function generateSchedule(weekStart: string | Date): Promise<Schedu
       }
     }
 
-    const savedShifts = await saveShiftsToDatabase(generatedShifts)
-    const savedExceptions = await saveExceptionsToDatabase(exceptions, savedShifts)
+    const savedShifts = await saveShiftsToDatabase(generatedShifts, organizationId)
+    const savedExceptions = await saveExceptionsToDatabase(exceptions, savedShifts, organizationId)
     await recordWorkingTimeForShifts(savedShifts)
 
     return {
@@ -162,20 +165,23 @@ export async function generateSchedule(weekStart: string | Date): Promise<Schedu
   }
 }
 
-export async function getWeekSchedule(weekStart: string | Date): Promise<ScheduleResult> {
+export async function getWeekSchedule(weekStart: string | Date, organizationId?: string): Promise<ScheduleResult> {
   const startDate = typeof weekStart === 'string' ? parseISO(weekStart) : weekStart
   const weekStartDate = startOfWeek(startDate, { weekStartsOn: 1 })
   const weekEndDate = addDays(weekStartDate, 6)
 
+  const orgFilter = organizationId ? { organizationId } : {}
+
   const shifts = await prisma.shift.findMany({
-    where: { date: { gte: weekStartDate, lte: weekEndDate } },
+    where: { date: { gte: weekStartDate, lte: weekEndDate }, ...orgFilter },
     include: { staff: true, rule: { select: { name: true } } },
     orderBy: { date: 'asc' }
   })
 
   const exceptions = await prisma.schedulingException.findMany({
     where: {
-      shift: { date: { gte: weekStartDate, lte: weekEndDate } }
+      shift: { date: { gte: weekStartDate, lte: weekEndDate } },
+      ...orgFilter
     },
     include: { rule: true }
   })
@@ -332,8 +338,10 @@ function processShiftRule(
   return { shifts }
 }
 
-async function saveShiftsToDatabase(shifts: GeneratedShift[]): Promise<GeneratedShift[]> {
+async function saveShiftsToDatabase(shifts: GeneratedShift[], organizationId?: string): Promise<GeneratedShift[]> {
   if (shifts.length === 0) return []
+
+  const orgFilter = organizationId ? { organizationId } : {}
 
   await prisma.shift.createMany({
     data: shifts.map(s => ({
@@ -343,7 +351,8 @@ async function saveShiftsToDatabase(shifts: GeneratedShift[]): Promise<Generated
       shiftName: s.shiftName,
       date: s.date,
       startTime: s.startTime,
-      endTime: s.endTime
+      endTime: s.endTime,
+      ...orgFilter
     }))
   })
 
@@ -352,7 +361,7 @@ async function saveShiftsToDatabase(shifts: GeneratedShift[]): Promise<Generated
   const weekEnd = shifts.reduce((max, s) => s.date > max ? s.date : max, shifts[0].date)
 
   const saved = await prisma.shift.findMany({
-    where: { date: { gte: weekStart, lte: weekEnd } },
+    where: { date: { gte: weekStart, lte: weekEnd }, ...orgFilter },
     include: { staff: true },
     orderBy: { date: 'asc' }
   })
@@ -374,9 +383,10 @@ async function saveShiftsToDatabase(shifts: GeneratedShift[]): Promise<Generated
   })
 }
 
-async function saveExceptionsToDatabase(exceptions: SchedulingException[], shifts: GeneratedShift[]): Promise<any[]> {
+async function saveExceptionsToDatabase(exceptions: SchedulingException[], shifts: GeneratedShift[], organizationId?: string): Promise<any[]> {
   if (exceptions.length === 0) return []
 
+  const orgFilter = organizationId ? { organizationId } : {}
   const savedExceptions = []
   for (const exception of exceptions) {
     const relatedShift = shifts.find(s => s.ruleId === exception.ruleId && s.shiftType === exception.shiftType)
@@ -384,7 +394,8 @@ async function saveExceptionsToDatabase(exceptions: SchedulingException[], shift
       data: {
         shiftId: relatedShift?.id || null,
         ruleId: exception.ruleId,
-        message: exception.message
+        message: exception.message,
+        ...orgFilter
       }
     })
     savedExceptions.push({

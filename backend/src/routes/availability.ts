@@ -9,11 +9,12 @@ const router = Router();
 router.use(authenticateToken);
 
 // GET all availabilities for managers (to view all staff submissions)
-router.get('/all', async (req: Request, res: Response) => {
+router.get('/all', async (req: AuthRequest, res: Response) => {
   try {
     const { week, staffType } = req.query;
+    const orgId = req.user!.organizationId;
 
-    let whereClause: any = {};
+    let whereClause: any = { staff: { organizationId: orgId } };
 
     // Filter by week if provided
     if (week) {
