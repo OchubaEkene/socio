@@ -49,8 +49,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const contract = await prisma.employeeContract.findUnique({
-      where: { id },
+    const orgId = req.user!.organizationId;
+    const contract = await prisma.employeeContract.findFirst({
+      where: { id, staff: { organizationId: orgId } },
       include: {
         staff: { select: { id: true, name: true, staffType: true } },
         manager: { select: { id: true, name: true } },
@@ -145,7 +146,8 @@ router.post('/', requireRole('admin', 'manager'), [
 router.patch('/:id', requireRole('admin', 'manager'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const existing = await prisma.employeeContract.findUnique({ where: { id } });
+    const orgId = req.user!.organizationId;
+    const existing = await prisma.employeeContract.findFirst({ where: { id, staff: { organizationId: orgId } } });
     if (!existing) return res.status(404).json({ success: false, message: 'Contract not found' });
 
     const {
@@ -194,7 +196,8 @@ router.patch('/:id', requireRole('admin', 'manager'), async (req: AuthRequest, r
 router.delete('/:id', requireRole('admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const existing = await prisma.employeeContract.findUnique({ where: { id } });
+    const orgId = req.user!.organizationId;
+    const existing = await prisma.employeeContract.findFirst({ where: { id, staff: { organizationId: orgId } } });
     if (!existing) return res.status(404).json({ success: false, message: 'Contract not found' });
     await prisma.employeeContract.delete({ where: { id } });
     res.json({ success: true, message: 'Contract deleted' });

@@ -81,9 +81,10 @@ router.put('/:id', requireRole('admin', 'manager'), [
     }
 
     const { id } = req.params;
+    const orgId = req.user!.organizationId;
     const { name, shiftType, shiftName, startHour, endHour, dayOfWeek, requiredStaff, genderPreference, requiredQualifications, priority } = req.body;
 
-    const existing = await prisma.rule.findUnique({ where: { id } });
+    const existing = await prisma.rule.findFirst({ where: { id, organizationId: orgId } });
     if (!existing) return res.status(404).json({ success: false, message: 'Rule not found' });
 
     const updatedRule = await prisma.rule.update({
@@ -125,8 +126,9 @@ router.delete('/all', requireRole('admin', 'manager'), async (req: AuthRequest, 
 router.delete('/:id', requireRole('admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const orgId = req.user!.organizationId;
 
-    const rule = await prisma.rule.findUnique({ where: { id } });
+    const rule = await prisma.rule.findFirst({ where: { id, organizationId: orgId } });
     if (!rule) return res.status(404).json({ success: false, message: 'Rule not found' });
 
     await prisma.rule.delete({ where: { id } });

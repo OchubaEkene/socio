@@ -72,11 +72,12 @@ router.post('/assign', [
 router.delete('/remove/:shiftId', async (req: AuthRequest, res: Response) => {
   try {
     const { shiftId } = req.params;
-    const shift = await prisma.shift.findUnique({
-      where: { id: shiftId },
+    const orgId = req.user!.organizationId;
+    const shift = await prisma.shift.findFirst({
+      where: { id: shiftId, organizationId: orgId },
       include: { staff: { select: { id: true, name: true } } }
     });
-    if (!shift) return res.status(404).json({ message: 'Shift not found' });
+    if (!shift) return res.status(404).json({ success: false, message: 'Shift not found' });
 
     await prisma.shift.delete({ where: { id: shiftId } });
     res.json({ message: 'Staff member removed from shift successfully', removedShift: shift });
@@ -96,18 +97,17 @@ router.post('/swap', [
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { shift1Id, shift2Id } = req.body;
+    const orgId = req.user!.organizationId;
 
     const [shift1, shift2] = await Promise.all([
-      prisma.shift.findUnique({ where: { id: shift1Id }, include: { staff: true } }),
-      prisma.shift.findUnique({ where: { id: shift2Id }, include: { staff: true } })
+      prisma.shift.findFirst({ where: { id: shift1Id, organizationId: orgId }, include: { staff: true } }),
+      prisma.shift.findFirst({ where: { id: shift2Id, organizationId: orgId }, include: { staff: true } })
     ]);
 
     if (!shift1 || !shift2) return res.status(404).json({ message: 'One or both shifts not found' });
     if (shift1.date.toDateString() === shift2.date.toDateString()) {
       return res.status(400).json({ message: 'Cannot swap shifts on the same day' });
     }
-
-    const orgId = req.user!.organizationId;
 
     // Availability checks for temporary staff
     if (shift1.staff.staffType === 'temporary') {
@@ -178,8 +178,9 @@ router.get('/available-staff', async (req: AuthRequest, res: Response) => {
 // GET shift details
 router.get('/shift/:shiftId', async (req: AuthRequest, res: Response) => {
   try {
-    const shift = await prisma.shift.findUnique({
-      where: { id: req.params.shiftId },
+    const orgId = req.user!.organizationId;
+    const shift = await prisma.shift.findFirst({
+      where: { id: req.params.shiftId, organizationId: orgId },
       include: { staff: { select: { id: true, name: true, gender: true, staffType: true } } }
     });
     if (!shift) return res.status(404).json({ message: 'Shift not found' });

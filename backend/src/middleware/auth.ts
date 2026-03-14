@@ -60,11 +60,14 @@ export const authenticateToken = async (
     // If user has no org (registered before multi-tenancy), auto-create one
     let organizationId = user.organizationId;
     if (!organizationId) {
-      const org = await prisma.organization.create({
-        data: { name: `${user.firstName ?? user.username}'s Organisation`, updatedAt: new Date() }
+      const result = await prisma.$transaction(async (tx) => {
+        const org = await tx.organization.create({
+          data: { name: `${user.firstName ?? user.username}'s Organisation`, updatedAt: new Date() }
+        });
+        await tx.user.update({ where: { id: user.id }, data: { organizationId: org.id } });
+        return org.id;
       });
-      await prisma.user.update({ where: { id: user.id }, data: { organizationId: org.id } });
-      organizationId = org.id;
+      organizationId = result;
     }
 
     req.user = {

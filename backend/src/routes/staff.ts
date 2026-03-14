@@ -44,9 +44,10 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const orgId = req.user!.organizationId;
 
-    const staff = await prisma.staff.findUnique({
-      where: { id },
+    const staff = await prisma.staff.findFirst({
+      where: { id, organizationId: orgId },
       include: {
         availabilities: { orderBy: { startTime: 'asc' } },
         shifts: { orderBy: { date: 'desc' } },
@@ -110,9 +111,10 @@ router.put('/:id', requireRole('admin', 'manager'), [
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { id } = req.params;
+    const orgId = req.user!.organizationId;
     const { name, gender, staffType, email, qualifications, maxHoursPerWeek } = req.body;
 
-    const existing = await prisma.staff.findUnique({ where: { id } });
+    const existing = await prisma.staff.findFirst({ where: { id, organizationId: orgId } });
     if (!existing) return res.status(404).json({ message: 'Staff member not found' });
 
     const updatedStaff = await prisma.staff.update({
@@ -139,7 +141,8 @@ router.put('/:id', requireRole('admin', 'manager'), [
 router.delete('/:id', requireRole('admin', 'manager'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const staff = await prisma.staff.findUnique({ where: { id } });
+    const orgId = req.user!.organizationId;
+    const staff = await prisma.staff.findFirst({ where: { id, organizationId: orgId } });
     if (!staff) return res.status(404).json({ message: 'Staff member not found' });
 
     // Soft delete — mark inactive so name is preserved in historical shifts
@@ -155,6 +158,9 @@ router.delete('/:id', requireRole('admin', 'manager'), async (req: AuthRequest, 
 router.patch('/:id/restore', requireRole('admin', 'manager'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const orgId = req.user!.organizationId;
+    const existing = await prisma.staff.findFirst({ where: { id, organizationId: orgId } });
+    if (!existing) return res.status(404).json({ message: 'Staff member not found' });
     await prisma.staff.update({ where: { id }, data: { isActive: true } });
     res.json({ message: 'Staff member restored.' });
   } catch (error) {

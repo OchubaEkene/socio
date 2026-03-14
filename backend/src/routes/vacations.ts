@@ -176,8 +176,8 @@ router.post('/', authenticateToken, [
     const orgId = req.user!.organizationId;
 
     // Check if staff exists
-    const staff = await prisma.staff.findUnique({
-      where: { id: staffId }
+    const staff = await prisma.staff.findFirst({
+      where: { id: staffId, organizationId: orgId }
     });
 
     if (!staff) {

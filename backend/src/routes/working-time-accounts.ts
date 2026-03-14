@@ -83,12 +83,13 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 });
 
 // GET working time account by ID
-router.get('/:id', authenticateToken, async (req: Request, res: Response) => {
+router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const orgId = req.user!.organizationId;
 
-    const account = await prisma.workingTimeAccount.findUnique({
-      where: { id },
+    const account = await prisma.workingTimeAccount.findFirst({
+      where: { id, organizationId: orgId },
       include: {
         staff: {
           select: {
@@ -287,10 +288,11 @@ router.post('/:id/transactions', authenticateToken, [
     const { id } = req.params;
     const { transactionType, amount, description, referenceType, referenceId, method = 'MANUAL', notes } = req.body;
     const recordedBy = req.user!.id;
+    const orgId = req.user!.organizationId;
 
     // Check if account exists
-    const account = await prisma.workingTimeAccount.findUnique({
-      where: { id }
+    const account = await prisma.workingTimeAccount.findFirst({
+      where: { id, organizationId: orgId }
     });
 
     if (!account) {
@@ -393,10 +395,11 @@ router.post('/:id/calculate-from-shift', authenticateToken, [
     const { id } = req.params;
     const { shiftId } = req.body;
     const recordedBy = req.user!.id;
+    const orgId = req.user!.organizationId;
 
     // Check if account exists
-    const account = await prisma.workingTimeAccount.findUnique({
-      where: { id },
+    const account = await prisma.workingTimeAccount.findFirst({
+      where: { id, organizationId: orgId },
       include: {
         staff: true
       }
@@ -410,8 +413,8 @@ router.post('/:id/calculate-from-shift', authenticateToken, [
     }
 
     // Get shift details
-    const shift = await prisma.shift.findUnique({
-      where: { id: shiftId }
+    const shift = await prisma.shift.findFirst({
+      where: { id: shiftId, organizationId: orgId }
     });
 
     if (!shift) {
