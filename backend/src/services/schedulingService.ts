@@ -1,4 +1,5 @@
 import { addDays, startOfWeek, format, parseISO } from 'date-fns'
+import { zonedTimeToUtc } from 'date-fns-tz'
 import prisma from '../lib/prisma'
 
 export interface SchedulingException {
@@ -95,6 +96,10 @@ export async function generateSchedule(weekStart: string | Date, organizationId?
 
     const rules = await prisma.rule.findMany({ where: { ...orgFilter }, orderBy: { priority: 'desc' } })
 
+    // Fetch org timezone so shift times are stored in the correct local time
+    const orgSettings = organizationId ? await prisma.orgSettings.findFirst({ where: { id: organizationId } }) : null
+    const orgTimezone = orgSettings?.timezone || 'UTC'
+
     if (rules.length === 0) {
       throw new Error('NO_RULES: No shift rules are configured. Please add rules before generating a schedule.')
     }
@@ -123,7 +128,7 @@ export async function generateSchedule(weekStart: string | Date, organizationId?
 
         for (const rule of applicableRules) {
           const result = processShiftRule(
-            rule, currentDate, shiftType, allStaff, availabilities, generatedShifts, staffShiftCounts, approvedAbsences, shiftPreferences, weeklyHoursMap
+            rule, currentDate, shiftType, allStaff, availabilities, generatedShifts, staffShiftCounts, approvedAbsences, shiftPreferences, weeklyHoursMap, orgTimezone
           )
 
           if (result.exception) {
@@ -221,19 +226,26 @@ function processShiftRule(
   staffShiftCounts: Map<string, number>,
   approvedAbsences: Array<{ staffId: string; startDate: Date; endDate: Date }> = [],
   shiftPreferences: Array<{ dayOfWeek: string; shiftType: string; preferenceType: string; contract: { staffId: string } }> = [],
-  weeklyHoursMap: Map<string, number> = new Map()
+  weeklyHoursMap: Map<string, number> = new Map(),
+  timezone: string = 'UTC'
 ): { shifts: GeneratedShift[], exception?: SchedulingException } {
   const shifts: GeneratedShift[] = []
 
   // Build shift times from rule's startHour/endHour (or fall back to day/night defaults)
-  const dateMs = date.getTime()
+  // Convert org-local hours to UTC so times are stored correctly regardless of server timezone
   const startHour: number = rule.startHour ?? (shiftType === 'day' ? 8 : 20)
   const endHour: number = rule.endHour ?? (shiftType === 'day' ? 20 : 8)
 
-  const shiftStartTime = new Date(new Date(dateMs).setHours(startHour, 0, 0, 0))
+  const shiftStartTime = zonedTimeToUtc(
+    new Date(date.getFullYear(), date.getMonth(), date.getDate(), startHour, 0, 0),
+    timezone
+  )
   // If endHour <= startHour, the shift crosses midnight
-  const endDateMs = endHour <= startHour ? dateMs + 86400000 : dateMs
-  const shiftEndTime = new Date(new Date(endDateMs).setHours(endHour, 0, 0, 0))
+  const endDate = endHour <= startHour ? addDays(date, 1) : date
+  const shiftEndTime = zonedTimeToUtc(
+    new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), endHour, 0, 0),
+    timezone
+  )
   const shiftHours = (shiftEndTime.getTime() - shiftStartTime.getTime()) / (1000 * 60 * 60)
 
   const dateStr = format(date, 'yyyy-MM-dd')
@@ -311,7 +323,7 @@ function processShiftRule(
       staffName: staff.name,
       shiftType,
       shiftName: rule.shiftName || null,
-      date: new Date(dateMs),
+      date: new Date(date),
       startTime: new Date(shiftStartTime),
       endTime: new Date(shiftEndTime),
       ruleId: rule.id,
@@ -343,8 +355,17 @@ async function saveShiftsToDatabase(shifts: GeneratedShift[], organizationId?: s
 
   const orgFilter = organizationId ? { organizationId } : {}
 
+  // Deduplicate: a staff member cannot appear twice on the same day
+  const seen = new Set<string>()
+  const dedupedShifts = shifts.filter(s => {
+    const key = `${s.staffId}::${format(s.date, 'yyyy-MM-dd')}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
   await prisma.shift.createMany({
-    data: shifts.map(s => ({
+    data: dedupedShifts.map(s => ({
       staffId: s.staffId,
       ruleId: s.ruleId || null,
       shiftType: s.shiftType,
@@ -353,7 +374,8 @@ async function saveShiftsToDatabase(shifts: GeneratedShift[], organizationId?: s
       startTime: s.startTime,
       endTime: s.endTime,
       ...orgFilter
-    }))
+    })),
+    skipDuplicates: true,
   })
 
   // Fetch saved records to get assigned IDs

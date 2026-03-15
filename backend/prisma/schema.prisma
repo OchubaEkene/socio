@@ -169,6 +169,7 @@ model Shift {
   responderShifts ShiftSwap[] @relation("ResponderShifts")
   timeRecords TimeRecord[]
 
+  @@unique([staffId, date])
   @@map("shifts")
 }
 
